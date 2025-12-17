@@ -1,43 +1,31 @@
-{ pkgs, ... }: {
-  # To learn more about how to use Nix to configure your environment
-  # see: https://developers.google.com/idx/guides/customize-idx-env
-
-  # Which nixpkgs channel to use. "stable-24.05" is recommended.
+# .idx/dev.nix - Defines the development environment for this project.
+# Each attribute in a set (the blocks enclosed in {})
+# must be separated by a semicolon.
+{ pkgs }: {
   channel = "stable-24.05";
 
-  # A list of packages to install.
-  # Correctly defines nodemon as a nodePackage.
-  packages = [
-    pkgs.nodejs_20
-    pkgs.nodePackages.nodemon
-  ];
+  packages = [ pkgs.nodejs_20 pkgs.cacert ];
 
-  # Sets environment variables in the workspace.
-  env = {};
+  env = {
+    SPOTIFY_CLIENT_ID = "5d313ceab3504720b4edd0712d1e7758";
+    SPOTIFY_CLIENT_SECRET = "82f0ad4bc06242ac8790cd5d13ffa58d";
+  };
 
-  # IDX-specific configuration.
   idx = {
-    # A list of VS Code extensions to install.
-    extensions = [
-      "dbaeumer.vscode-eslint"
-      "google.gemini-cli-vscode-ide-companion"
-    ];
+    extensions = [ "dbaeumer.vscode-eslint" ];
 
-    # Workspace lifecycle hooks.
     workspace = {
-      # Runs when a workspace is first created.
-      onCreate = {
-        npm-install = "npm install";
-      };
+      # This command runs ONCE when the workspace is created.
+      onCreate = { "npm-install" = "npm install"; };
     };
 
-    # Web preview configuration.
     previews = {
       enable = true;
       previews = {
         web = {
-          # This command now correctly sets the PORT environment variable for your server.
-          command = ["sh" "-c" "PORT=$PORT npm run dev"];
+          # This is the command that starts your web server.
+          # We are using "npm run dev" to enable --watch for auto-reloading.
+          command = ["npm" "run" "dev" "--" "--port" "$PORT"];
           manager = "web";
         };
       };

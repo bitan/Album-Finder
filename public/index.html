@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,44 +7,61 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="auth-container">
+
+  <!-- Authentication Container -->
+  <div id="auth-container" class="auth-container">
     <div class="icon">♫</div>
     <h1>Album<span>Search</span></h1>
     <p>Discover and explore your favorite albums</p>
 
     <!-- Login Form -->
     <div id="login-view">
-      <form onsubmit="app.login(event)">
+      <form id="login-form">
         <input type="text" id="login-username" placeholder="Username" required>
         <input type="password" id="login-password" placeholder="Password" required>
         <button type="submit">Sign In</button>
       </form>
-      <a class="toggle-form" onclick="app.toggleView()">Need to register? Sign up</a>
+      <a href="#" class="toggle-form">Need to register? Sign up</a>
     </div>
 
-    <!-- Registration Form (hidden by default) -->
+    <!-- Registration Form -->
     <div id="register-view" style="display: none;">
-      <form onsubmit="app.register(event)">
-        <input type="text" id="reg-username" placeholder="Username" required>
-        <input type="password" id="reg-password" placeholder="Password" required>
-        <button type="submit">Register</button>
+      <form id="reg-form">
+        <input type="text" id="reg-username" placeholder="Choose a username" required>
+        <input type="password" id="reg-password" placeholder="Create a password" required>
+        <button type="submit">Sign Up</button>
       </form>
-      <a class="toggle-form" onclick="app.toggleView()">Already have an account? Sign in</a>
+      <a href="#" class="toggle-form">Already have an account? Sign in</a>
     </div>
-
-    <!-- Dashboard (hidden by default) -->
-    <div id="dashboard">
-        <h2>Welcome!</h2>
-        <p id="dashboard-message"></p>
-        <button onclick="app.logout()">Logout</button>
-    </div>
-
-    <div class="divider"></div>
-    <p class="footer-text">By signing in, you agree to our Terms of Service and Privacy Policy</p>
-    <p id="message"></p>
-
+    
+    <p id="message" class="message"></p>
   </div>
 
-  <script src="script.js"></script>
+  <!-- Dashboard Container -->
+  <div id="dashboard" class="dashboard-container" style="display: none;">
+    <div class="dashboard-header">
+      <div class="header-content">
+        <h1>Record & vinyl<br>market</h1>
+        <p>Expand your vinyl record collection and find the perfect record player with us</p>
+      </div>
+      <button id="logout-button">Sign Out</button>
+    </div>
+    
+    <form id="search-form" class="search-form">
+      <input type="text" id="search-query" placeholder="select in the catalog" required>
+      <button type="submit">➔</button>
+    </form>
+
+    <div class="results-header">
+        <h2>new products</h2>
+        <a href="#" class="watch-all">(watch all)</a>
+    </div>
+
+    <div id="album-results" class="album-results">
+      <!-- Album results will be displayed here -->
+    </div>
+  </div>
+
+<script src="script.js"></script>
 </body>
 </html>
