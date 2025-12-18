@@ -1,67 +1,105 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AlbumSearch</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reluxe</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <!-- Authentication Container -->
-  <div id="auth-container" class="auth-container">
-    <div class="icon">♫</div>
-    <h1>Album<span>Search</span></h1>
-    <p>Discover and explore your favorite albums</p>
+    <header class="main-header">
+        <div class="logo">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="#FF9900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 7L12 12" stroke="#FF9900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M22 7L12 12" stroke="#FF9900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12 22V12" stroke="#FF9900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M7 4.5L17 9.5" stroke="#FF9900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Reluxe</span>
+        </div>
+        <nav>
+            <a href="#" class="nav-link">Home</a>
+            <a href="#" class="nav-link active">About</a>
+            <a href="#" class="nav-link">Tracks</a>
+            <a href="#" class="nav-link">How it works</a>
+        </nav>
+        <div class="header-actions">
+             <a href="/favorites.html" class="nav-link">My Favorites</a>
+            <button id="login-cta-btn" class="btn btn-secondary">Log In</button>
+            <button id="signup-cta-btn" class="btn btn-primary">Sign Up</button>
+            <button id="logout-button" class="btn btn-secondary" style="display: none;">Sign Out</button>
+        </div>
+    </header>
 
-    <!-- Login Form -->
-    <div id="login-view">
-      <form id="login-form">
-        <input type="text" id="login-username" placeholder="Username" required>
-        <input type="password" id="login-password" placeholder="Password" required>
-        <button type="submit">Sign In</button>
-      </form>
-      <a href="#" class="toggle-form">Need to register? Sign up</a>
+    <!-- Authentication Modals -->
+    <div id="auth-container" class="auth-modal-overlay" style="display: none;">
+        <div class="auth-modal-content">
+            <span class="close-auth-modal">&times;</span>
+            <!-- Login Form -->
+            <div id="login-view">
+                <h2>Log In to Reluxe</h2>
+                <form id="login-form">
+                    <input type="text" id="login-username" placeholder="Username" required>
+                    <input type="password" id="login-password" placeholder="Password" required>
+                    <button type="submit" class="btn btn-primary">Log In</button>
+                </form>
+                <p>Don't have an account? <a href="#" class="toggle-form">Sign up</a></p>
+            </div>
+            <!-- Registration Form -->
+            <div id="register-view" style="display: none;">
+                <h2>Sign Up for Reluxe</h2>
+                <form id="reg-form">
+                    <input type="text" id="reg-username" placeholder="Choose a username" required>
+                    <input type="password" id="reg-password" placeholder="Create a password" required>
+                    <button type="submit" class="btn btn-primary">Sign Up</button>
+                </form>
+                <p>Already have an account? <a href="#" class="toggle-form">Log in</a></p>
+            </div>
+             <p id="message" class="message"></p>
+        </div>
     </div>
 
-    <!-- Registration Form -->
-    <div id="register-view" style="display: none;">
-      <form id="reg-form">
-        <input type="text" id="reg-username" placeholder="Choose a username" required>
-        <input type="password" id="reg-password" placeholder="Create a password" required>
-        <button type="submit">Sign Up</button>
-      </form>
-      <a href="#" class="toggle-form">Already have an account? Sign in</a>
-    </div>
-    
-    <p id="message" class="message"></p>
-  </div>
 
-  <!-- Dashboard Container -->
-  <div id="dashboard" class="dashboard-container" style="display: none;">
-    <div class="dashboard-header">
-      <div class="header-content">
-        <h1>Record & vinyl<br>market</h1>
-        <p>Expand your vinyl record collection and find the perfect record player with us</p>
-      </div>
-      <button id="logout-button">Sign Out</button>
-    </div>
-    
-    <form id="search-form" class="search-form">
-      <input type="text" id="search-query" placeholder="select in the catalog" required>
-      <button type="submit">➔</button>
-    </form>
+    <main id="dashboard" class="dashboard-container" style="display: none;">
+        <section class="hero-section">
+            <div class="hero-content">
+                <h1>The platform helps aspiring artists bring their music to the audience</h1>
+                <button class="btn btn-primary">Learn More <span class="arrow">&rarr;</span></button>
+            </div>
+            <div class="hero-images">
+                <div class="hero-image-large"></div>
+                <div class="hero-image-small"></div>
+            </div>
+        </section>
 
-    <div class="results-header">
-        <h2>new products</h2>
-        <a href="#" class="watch-all">(watch all)</a>
+        <section class="search-section">
+            <form id="search-form">
+                <input type="text" id="search-query" placeholder="Search for artists, tracks, or albums..." required>
+                <button type="submit" class="btn-icon">&rarr;</button>
+            </form>
+        </section>
+
+        <section class="results-section">
+            <h2>Search Results</h2>
+            <div id="album-results" class="album-grid">
+                <!-- Album results will be displayed here -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Album Details Modal -->
+    <div id="album-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <div id="modal-body">
+                <!-- Album details will be loaded here -->
+            </div>
+        </div>
     </div>
 
-    <div id="album-results" class="album-results">
-      <!-- Album results will be displayed here -->
-    </div>
-  </div>
-
-<script src="script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>

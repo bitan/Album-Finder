@@ -1,15 +1,22 @@
+
 const app = {
   // --- UI Elements ---
   authContainer: document.getElementById('auth-container'),
   loginView: document.getElementById('login-view'),
   registerView: document.getElementById('register-view'),
   dashboard: document.getElementById('dashboard'),
-  dashboardMessage: document.getElementById('dashboard-message'),
   message: document.getElementById('message'),
   albumResultsContainer: document.getElementById('album-results'),
   loginForm: document.getElementById('login-form'),
   regForm: document.getElementById('reg-form'),
   searchForm: document.getElementById('search-form'),
+  modal: document.getElementById('album-modal'),
+  modalBody: document.getElementById('modal-body'),
+  closeButton: document.querySelector('.close-button'),
+  loginCtaBtn: document.getElementById('login-cta-btn'),
+  signupCtaBtn: document.getElementById('signup-cta-btn'),
+  logoutButton: document.getElementById('logout-button'),
+  closeAuthModalBtn: document.querySelector('.close-auth-modal'),
 
   // --- App State ---
   token: null,
@@ -21,13 +28,25 @@ const app = {
     this.register = this.register.bind(this);
     this.searchAlbums = this.searchAlbums.bind(this);
     this.logout = this.logout.bind(this);
+    this.saveFavorite = this.saveFavorite.bind(this);
+    this.openModal = this.openModal.bind(this);
+    this.closeModal = this.closeModal.bind(this);
 
-    // Add event listeners
+    // Event Listeners
     this.loginForm.addEventListener('submit', this.login);
     this.regForm.addEventListener('submit', this.register);
-    document.getElementById('logout-button').addEventListener('click', this.logout);
     this.searchForm.addEventListener('submit', this.searchAlbums);
-    
+    this.logoutButton.addEventListener('click', this.logout);
+    this.loginCtaBtn.addEventListener('click', () => this.showAuthForms(true));
+    this.signupCtaBtn.addEventListener('click', () => this.showAuthForms(false));
+    this.closeAuthModalBtn.addEventListener('click', () => this.hideAuthForms());
+    this.authContainer.addEventListener('click', (e) => {
+        if (e.target === this.authContainer) this.hideAuthForms();
+    });
+    this.closeButton.addEventListener('click', this.closeModal);
+    window.addEventListener('click', (event) => {
+      if (event.target == this.modal) this.closeModal();
+    });
     document.querySelectorAll('.toggle-form').forEach(el => {
       el.addEventListener('click', (e) => {
         e.preventDefault();
@@ -35,7 +54,6 @@ const app = {
       });
     });
 
-    // Re-enable the token check on application start
     this.checkForToken();
   },
 
@@ -44,9 +62,9 @@ const app = {
     this.token = localStorage.getItem('authToken');
     this.username = localStorage.getItem('username');
     if (this.token && this.username) {
-      this.showDashboard(this.username);
+      this.showDashboard();
     } else {
-      this.showAuthForms(false);
+      this.showLandingView();
     }
   },
 
@@ -69,7 +87,8 @@ const app = {
         this.username = data.username;
         localStorage.setItem('authToken', this.token);
         localStorage.setItem('username', this.username);
-        this.showDashboard(this.username);
+        this.showDashboard();
+        this.hideAuthForms();
       } else {
         this.displayMessage(data.message || 'Registration failed.', 'error');
       }
@@ -97,7 +116,8 @@ const app = {
         this.username = data.username;
         localStorage.setItem('authToken', this.token);
         localStorage.setItem('username', this.username);
-        this.showDashboard(this.username);
+        this.showDashboard();
+        this.hideAuthForms();
       } else {
         this.displayMessage(data.message || 'Login failed.', 'error');
       }
@@ -111,21 +131,18 @@ const app = {
     this.username = null;
     localStorage.removeItem('authToken');
     localStorage.removeItem('username');
-    this.showAuthForms(true);
+    this.showLandingView();
   },
 
   // --- API Interaction ---
-  async searchAlbums(event) {
+   async searchAlbums(event) {
     event.preventDefault();
-
     const query = document.getElementById('search-query').value;
     this.albumResultsContainer.innerHTML = '<div class="loading">Searching...</div>';
 
     try {
       const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
-        headers: {
-          'Authorization': `Bearer ${this.token}`
-        }
+        headers: { 'Authorization': `Bearer ${this.token}` }
       });
       const data = await response.json();
 
@@ -135,11 +152,47 @@ const app = {
         this.albumResultsContainer.innerHTML = `<div class="error">${data.message || 'Search failed.'}</div>`;
         if (response.status === 401 || response.status === 403) {
           this.logout();
-          this.displayMessage('Your session has expired. Please log in again.', 'error');
         }
       }
     } catch (error) {
       this.albumResultsContainer.innerHTML = '<div class="error">Could not connect to the server.</div>';
+    }
+  },
+  
+  async saveFavorite(event) {
+    event.stopPropagation();
+    const button = event.target;
+    const albumData = {
+        albumId: button.dataset.albumId,
+        name: button.dataset.name,
+        artist: button.dataset.artist,
+        coverImage: button.dataset.coverImage,
+    };
+
+    button.disabled = true;
+    button.textContent = 'Saving...';
+
+    try {
+        const response = await fetch('/api/favorites', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.token}`
+            },
+            body: JSON.stringify(albumData)
+        });
+        if (response.ok) {
+            button.textContent = 'Saved!';
+        } else {
+            const data = await response.json();
+            this.displayMessage(data.message || 'Could not save album.', 'error');
+            button.disabled = false;
+            button.textContent = 'Save';
+        }
+    } catch (error) {
+        this.displayMessage('Could not connect to the server.', 'error');
+        button.disabled = false;
+        button.textContent = 'Save';
     }
   },
 
@@ -160,40 +213,128 @@ const app = {
           <h3>${album.name}</h3>
           <p>${album.artist}</p>
         </div>
+        <button class="save-btn" 
+                data-album-id="${album.id}" 
+                data-name="${album.name}" 
+                data-artist="${album.artist}" 
+                data-cover-image="${album.coverImage}">
+          Save
+        </button>
       `;
+      albumCard.addEventListener('click', (e) => {
+          if (!e.target.classList.contains('save-btn')) {
+              this.openModal(album.id)
+          }
+      });
       this.albumResultsContainer.appendChild(albumCard);
+    });
+    
+    this.albumResultsContainer.querySelectorAll('.save-btn').forEach(button => {
+        button.addEventListener('click', this.saveFavorite);
     });
   },
 
-  showDashboard(username) {
-    this.authContainer.style.display = 'none';
-    this.dashboard.style.display = 'block';
-    this.dashboardMessage.textContent = `Welcome, ${username}!`;
-    this.displayMessage('');
-  },
+  async openModal(albumId) {
+    this.modal.style.display = 'flex';
+    this.modalBody.innerHTML = '<div class="loading">Loading details...</div>';
 
-  showAuthForms(showLogoutMessage) {
-    this.dashboard.style.display = 'none';
-    this.authContainer.style.display = 'block';
-    this.loginView.style.display = 'block';
-    this.registerView.style.display = 'none';
-    this.albumResultsContainer.innerHTML = '';
-    if (showLogoutMessage) {
-      this.displayMessage('You have been logged out successfully.', 'success');
-    } else {
-      this.displayMessage('');
+    try {
+      const response = await fetch(`/api/album/${albumId}`, {
+        headers: { 'Authorization': `Bearer ${this.token}` }
+      });
+      const album = await response.json();
+
+      if (response.ok) {
+        this.modalBody.innerHTML = `
+           <div class="album-art-container">
+            <img src="${album.coverImage}" alt="${album.name} cover">
+            <div class="vinyl-disc"></div>
+          </div>
+          <div>
+            <h2>${album.name}</h2>
+            <p class="artist-name">${album.artist}</p>
+            <div class="stats-container">
+              <div class="stat-card">
+                <p class="stat-title">Total Tracks</p>
+                <p class="stat-value">${album.totalTracks}</p>
+              </div>
+              <div class="stat-card">
+                <p class="stat-title">Popularity</p>
+                <p class="stat-value">${album.popularity}%</p>
+              </div>
+            </div>
+            <div class="track-list-container">
+              <h3>Tracklist</h3>
+              <ul class="track-list">
+                ${album.tracks.map(track => `
+                  <li>
+                    <span class="track-number">${String(track.track_number).padStart(2, '0')}</span>
+                    <span class="track-name">${track.name}</span>
+                    <span class="track-duration">${this.formatDuration(track.duration_ms)}</span>
+                  </li>
+                `).join('')}
+              </ul>
+            </div>
+          </div>
+        `;
+      } else {
+        this.modalBody.innerHTML = `<div class="error">${album.message || 'Could not load album details.'}</div>`;
+      }
+    } catch (error) {
+      this.modalBody.innerHTML = '<div class="error">Could not connect to the server.</div>';
     }
   },
 
+  closeModal() {
+    this.modal.style.display = 'none';
+  },
+  
+  formatDuration(ms) {
+    const minutes = Math.floor(ms / 60000);
+    const seconds = ((ms % 60000) / 1000).toFixed(0);
+    return minutes + ":" + (seconds < 10 ? '0' : '') + seconds;
+  },
+
+  showDashboard() {
+    this.dashboard.style.display = 'block';
+    this.loginCtaBtn.style.display = 'none';
+    this.signupCtaBtn.style.display = 'none';
+    this.logoutButton.style.display = 'block';
+  },
+
+  showLandingView() {
+    this.dashboard.style.display = 'none';
+    this.loginCtaBtn.style.display = 'block';
+    this.signupCtaBtn.style.display = 'block';
+    this.logoutButton.style.display = 'none';
+  },
+
+  showAuthForms(isLogin) {
+    this.authContainer.style.display = 'flex';
+    if (isLogin) {
+        this.loginView.style.display = 'block';
+        this.registerView.style.display = 'none';
+    } else {
+        this.loginView.style.display = 'none';
+        this.registerView.style.display = 'block';
+    }
+    this.displayMessage('');
+  },
+
+  hideAuthForms() {
+    this.authContainer.style.display = 'none';
+  },
+
   toggleView() {
-    this.loginView.style.display = this.loginView.style.display === 'none' ? 'block' : 'none';
-    this.registerView.style.display = this.registerView.style.display === 'none' ? 'block' : 'none';
+    const isLoginVisible = this.loginView.style.display === 'block';
+    this.loginView.style.display = isLoginVisible ? 'none' : 'block';
+    this.registerView.style.display = isLoginVisible ? 'block' : 'none';
     this.displayMessage('');
   },
 
   displayMessage(text, type = 'message') {
     this.message.textContent = text;
-    this.message.className = type;
+    this.message.className = `message ${type}`;
   }
 };
 

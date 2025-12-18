@@ -1,0 +1,53 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Favorites - Reluxe</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="logo">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="#FF9900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 7L12 12" stroke="#FF9900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M22 7L12 12" stroke="#FF9900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12 22V12" stroke="#FF9900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M7 4.5L17 9.5" stroke="#FF9900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Reluxe</span>
+        </div>
+        <nav>
+            <a href="/" class="nav-link">Home</a>
+            <a href="#" class="nav-link">About</a>
+            <a href="#" class="nav-link">Tracks</a>
+            <a href="#" class="nav-link">How it works</a>
+        </nav>
+        <div class="header-actions">
+            <a href="/" class="nav-link">Search</a>
+            <button id="logout-button" class="btn btn-secondary" style="display: none;">Sign Out</button>
+        </div>
+    </header>
+
+    <main class="dashboard-container">
+        <section class="hero-section">
+            <div class="hero-content">
+                <h1>Your Favorite Albums</h1>
+                <p>A collection of the music you love.</p>
+            </div>
+        </section>
+
+        <section class="results-section">
+            <h2>Your Collection</h2>
+            <div id="favorites-container" class="album-grid">
+                <!-- Favorite albums will be loaded here -->
+            </div>
+        </section>
+    </main>
+
+    <script src="/favorites.js"></script>
+</body>
+</html>

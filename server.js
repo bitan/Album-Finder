@@ -5,8 +5,19 @@ const axios = require('axios');
 const low = require('lowdb');
 const FileSync = require('lowdb/adapters/FileSync');
 const jwt = require('jsonwebtoken');
+const admin = require('firebase-admin');
 
 const app = express();
+
+// --- Firebase Admin SDK ---
+const serviceAccount = require('./firebase-service-account.json');
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+const firestoreDb = admin.firestore();
+
 
 // --- Configuration ---
 const JWT_SECRET = 'your-super-secret-key-that-should-be-in-an-env-file';
@@ -127,6 +138,86 @@ app.get('/api/search', authenticateToken, async (req, res) => {
     res.status(500).json({ message: 'Error during search. Check server logs for details.' });
   }
 });
+
+app.post('/api/favorites', authenticateToken, async (req, res) => {
+    const { albumId, name, artist, coverImage } = req.body;
+    const userId = req.user.id; 
+
+    if (!albumId || !name || !artist) {
+        return res.status(400).json({ message: 'Missing album information.' });
+    }
+
+    try {
+        const favorite = {
+            userId: userId,
+            albumId: albumId,
+            name: name,
+            artist: artist,
+            coverImage: coverImage,
+            savedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        const docRef = await firestoreDb.collection('favorites').add(favorite);
+        res.status(201).json({ message: 'Album saved to favorites!', id: docRef.id });
+
+    } catch (error) {
+        console.error('Error saving to Firestore:', error);
+        res.status(500).json({ message: 'Server error while saving favorite.' });
+    }
+});
+
+app.get('/api/favorites', authenticateToken, async (req, res) => {
+    const userId = req.user.id;
+
+    try {
+        const snapshot = await firestoreDb.collection('favorites').where('userId', '==', userId).orderBy('savedAt', 'desc').get();
+        if (snapshot.empty) {
+            return res.status(200).json([]);
+        }
+
+        const favorites = [];
+        snapshot.forEach(doc => {
+            favorites.push({ id: doc.id, ...doc.data() });
+        });
+
+        res.status(200).json(favorites);
+    } catch (error) {
+        console.error('Error fetching favorites:', error);
+        res.status(500).json({ message: 'Server error while fetching favorites.' });
+    }
+});
+
+app.get('/api/album/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const token = await getSpotifyToken();
+  if (!token) {
+    return res.status(503).json({ message: 'Could not connect to Spotify.' });
+  }
+
+  try {
+    const response = await axios.get(`https://api.spotify.com/v1/albums/${id}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    const album = response.data;
+    const albumDetails = {
+      id: album.id,
+      name: album.name,
+      artist: album.artists.map(a => a.name).join(', '),
+      coverImage: album.images.length ? album.images[0].url : '',
+      releaseDate: album.release_date,
+      popularity: album.popularity,
+      totalTracks: album.total_tracks,
+      tracks: album.tracks.items.map(track => ({ name: track.name, duration: track.duration_ms, track_number: track.track_number }))
+    };
+
+    res.status(200).json(albumDetails);
+  } catch (error) {
+    console.error(`Error fetching album details for ${id}:`, error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
+    res.status(500).json({ message: 'Error fetching album details.' });
+  }
+});
+
 
 // --- Server Startup ---
 function getPort() {
