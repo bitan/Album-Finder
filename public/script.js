@@ -118,6 +118,15 @@ const app = {
     if (landingSignup) landingSignup.addEventListener('click', () => this.showAuthForms(false));
     // login-cta-btn and signup-cta-btn already wired above
 
+    // Mobile: back button closes the slide-over right panel
+    const backBtn = document.getElementById('ds-back-btn');
+    if (backBtn) {
+      backBtn.addEventListener('click', () => {
+        const rightPanel = document.getElementById('ds-right-panel');
+        if (rightPanel) rightPanel.classList.remove('mobile-open');
+      });
+    }
+
     this.checkForToken();
   },
 
@@ -297,6 +306,12 @@ const app = {
     if (journalBtn) journalBtn.onclick = handler;
     if (heartBtn)   heartBtn.onclick = handler;
     if (tracksBtn)  tracksBtn.onclick = () => this.openModal(album.id);
+
+    // On mobile: slide up the right panel
+    const rightPanel = document.getElementById('ds-right-panel');
+    if (rightPanel && window.innerWidth <= 768) {
+      rightPanel.classList.add('mobile-open');
+    }
   },
 
   // --- Album Detail Modal ---
