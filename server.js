@@ -1,66 +1,158 @@
+require('dotenv').config();
+
+// --- Environment Validation (must run before anything else) ---
+// GOOGLE_APPLICATION_CREDENTIALS is only required in local dev mode
+// (when FIREBASE_SERVICE_ACCOUNT_JSON is not set)
+const REQUIRED_ENV = ['JWT_SECRET'];
+if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+  REQUIRED_ENV.push('GOOGLE_APPLICATION_CREDENTIALS');
+}
+const missingEnv = REQUIRED_ENV.filter(k => !process.env[k]);
+if (missingEnv.length) {
+  missingEnv.forEach(k => console.error(`Missing required environment variable: ${k}`));
+  process.exit(1);
+}
+if (process.env.JWT_SECRET.length < 32) {
+  console.error('JWT_SECRET must be at least 32 characters long. Generate one with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
+  process.exit(1);
+}
+
 const express = require('express');
 const bcrypt = require('bcrypt');
 const path = require('path');
 const axios = require('axios');
-const low = require('lowdb');
-const FileSync = require('lowdb/adapters/FileSync');
 const jwt = require('jsonwebtoken');
 const admin = require('firebase-admin');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 
-// --- Firebase Admin SDK ---
-const serviceAccount = require('./firebase-service-account.json');
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
+// --- Rate Limiters ---
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,                   // max 10 attempts per IP per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many attempts. Please try again in 15 minutes.' }
 });
+
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests. Please slow down.' }
+});
+
+// --- Firebase Admin SDK ---
+// Supports both file path (local dev) and inline JSON (production/cloud deploy)
+let firebaseCredential;
+if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+  try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    firebaseCredential = admin.credential.cert(serviceAccount);
+  } catch (e) {
+    console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:', e.message);
+    process.exit(1);
+  }
+} else {
+  // Falls back to GOOGLE_APPLICATION_CREDENTIALS file path for local dev
+  firebaseCredential = admin.credential.applicationDefault();
+}
+
+admin.initializeApp({ credential: firebaseCredential });
 
 const firestoreDb = admin.firestore();
 
-
 // --- Configuration ---
-const JWT_SECRET = 'your-super-secret-key-that-should-be-in-an-env-file';
-
-// --- User Database Setup (using lowdb) ---
-const adapter = new FileSync('db.json');
-const db = low(adapter);
-db.defaults({ users: [] }).write();
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // --- Middleware Setup ---
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-// --- Spotify API ---
-const spotifyClientId = process.env.SPOTIFY_CLIENT_ID;
-const spotifyClientSecret = process.env.SPOTIFY_CLIENT_SECRET;
-let spotifyToken = null;
+// --- iTunes Search API ---
+// No credentials needed — iTunes API is free and open.
 
-async function getSpotifyToken() {
-  if (spotifyToken && spotifyToken.expiration > Date.now()) {
-    return spotifyToken.access_token;
-  }
-  if (!spotifyClientId || !spotifyClientSecret) {
-    console.error("Spotify API credentials are not set.");
-    return null;
+app.get('/api/search', apiLimiter, authenticateToken, async (req, res) => {
+  const { q } = req.query;
+  if (!q) {
+    return res.status(400).json({ message: 'Search query required.' });
   }
   try {
-    const response = await axios.post('https://accounts.spotify.com/api/token', 'grant_type=client_credentials', {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Basic ' + (Buffer.from(spotifyClientId + ':' + spotifyClientSecret).toString('base64'))
+    const response = await axios.get('https://itunes.apple.com/search', {
+      params: {
+        term: q,
+        media: 'music',
+        entity: 'album',
+        limit: 12
       }
     });
-    const token = response.data;
-    spotifyToken = { access_token: token.access_token, expiration: Date.now() + (token.expires_in * 1000) };
-    console.log('Successfully obtained new Spotify token.');
-    return spotifyToken.access_token;
+
+    const albums = response.data.results.map(item => ({
+      id: String(item.collectionId),
+      name: item.collectionName,
+      artist: item.artistName,
+      coverImage: item.artworkUrl100
+        ? item.artworkUrl100.replace('100x100bb', '600x600bb')
+        : ''
+    }));
+
+    res.status(200).json(albums);
   } catch (error) {
-    console.error('Error getting Spotify token:', error.response ? error.response.data : error.message);
-    return null;
+    console.error('iTunes Search Error:', error.message);
+    res.status(500).json({ message: 'Error during search. Check server logs for details.' });
   }
-}
+});
+
+app.get('/api/album/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Fetch album info + tracks in parallel
+    const [albumRes, tracksRes] = await Promise.all([
+      axios.get('https://itunes.apple.com/lookup', {
+        params: { id, entity: 'album' }
+      }),
+      axios.get('https://itunes.apple.com/lookup', {
+        params: { id, entity: 'song' }
+      })
+    ]);
+
+    const albumInfo = albumRes.data.results.find(r => r.wrapperType === 'collection');
+    if (!albumInfo) {
+      return res.status(404).json({ message: 'Album not found.' });
+    }
+
+    const tracks = tracksRes.data.results
+      .filter(r => r.wrapperType === 'track')
+      .map((track, idx) => ({
+        name: track.trackName,
+        duration_ms: track.trackTimeMillis || 0,
+        track_number: track.trackNumber || idx + 1
+      }));
+
+    const albumDetails = {
+      id: String(albumInfo.collectionId),
+      name: albumInfo.collectionName,
+      artist: albumInfo.artistName,
+      coverImage: albumInfo.artworkUrl100
+        ? albumInfo.artworkUrl100.replace('100x100bb', '600x600bb')
+        : '',
+      releaseDate: albumInfo.releaseDate
+        ? albumInfo.releaseDate.split('T')[0]
+        : '',
+      popularity: null,
+      totalTracks: albumInfo.trackCount || tracks.length,
+      tracks
+    };
+
+    res.status(200).json(albumDetails);
+  } catch (error) {
+    console.error(`iTunes album lookup error for ${id}:`, error.message);
+    res.status(500).json({ message: 'Error fetching album details.' });
+  }
+});
 
 // --- JWT Authentication Middleware ---
 function authenticateToken(req, res, next) {
@@ -80,144 +172,214 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.post('/register', async (req, res) => {
+app.post('/register', authLimiter, async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ message: 'Username and password required.' });
   }
-  if (db.get('users').find({ username }).value()) {
-    return res.status(409).json({ message: 'Username already exists.' });
+  if (username.length < 3 || username.length > 30) {
+    return res.status(400).json({ message: 'Username must be between 3 and 30 characters.' });
+  }
+  if (password.length < 6 || password.length > 72) {
+    return res.status(400).json({ message: 'Password must be between 6 and 72 characters.' });
   }
   try {
+    // Check for existing username in Firestore
+    const existing = await firestoreDb.collection('users').where('username', '==', username).limit(1).get();
+    if (!existing.empty) {
+      return res.status(409).json({ message: 'Username already exists.' });
+    }
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = { id: Date.now().toString(), username, password: hashedPassword };
-    db.get('users').push(newUser).write();
-    const userPayload = { id: newUser.id, username: newUser.username };
+    const docRef = await firestoreDb.collection('users').add({
+      username,
+      password: hashedPassword,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    // Use Firestore doc ID as the user id
+    await docRef.update({ id: docRef.id });
+    const userPayload = { id: docRef.id, username };
     const accessToken = jwt.sign(userPayload, JWT_SECRET, { expiresIn: '24h' });
-    res.status(201).json({ token: accessToken, username: newUser.username });
+    res.status(201).json({ token: accessToken, username });
   } catch (error) {
-    res.status(500).json({ message: 'Server error during registration.' });
+    console.error('Registration error:', error);
+    res.status(500).json({ message: 'Database error. Please try again.' });
   }
 });
 
-app.post('/login', async (req, res) => {
+app.post('/login', authLimiter, async (req, res) => {
   const { username, password } = req.body;
-  const user = db.get('users').find({ username }).value();
-  if (user && await bcrypt.compare(password, user.password)) {
-    const userPayload = { id: user.id, username: user.username };
+  try {
+    const snapshot = await firestoreDb.collection('users').where('username', '==', username).limit(1).get();
+    if (snapshot.empty) {
+      return res.status(401).json({ message: 'Invalid username or password.' });
+    }
+    const userDoc = snapshot.docs[0];
+    const user = userDoc.data();
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ message: 'Invalid username or password.' });
+    }
+    const userPayload = { id: userDoc.id, username: user.username };
     const accessToken = jwt.sign(userPayload, JWT_SECRET, { expiresIn: '24h' });
     res.status(200).json({ token: accessToken, username: user.username });
-  } else {
-    res.status(401).json({ message: 'Invalid username or password.' });
-  }
-});
-
-app.get('/api/search', authenticateToken, async (req, res) => {
-  const { q } = req.query;
-  if (!q) {
-    return res.status(400).json({ message: 'Search query required.' });
-  }
-  const token = await getSpotifyToken();
-  if (!token) {
-    return res.status(503).json({ message: 'Could not connect to Spotify.' });
-  }
-  try {
-    const response = await axios.get('https://api.spotify.com/v1/search', {
-      headers: { 'Authorization': `Bearer ${token}` },
-      params: { q, type: 'album', limit: 12 }
-    });
-    const albums = response.data.albums.items.map(item => ({
-      id: item.id,
-      name: item.name,
-      artist: item.artists.map(a => a.name).join(', '),
-      coverImage: item.images.length ? item.images[0].url : ''
-    }));
-    res.status(200).json(albums);
   } catch (error) {
-    console.error('Spotify Search Error:', error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
-    res.status(500).json({ message: 'Error during search. Check server logs for details.' });
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Database error. Please try again.' });
   }
 });
 
-app.post('/api/favorites', authenticateToken, async (req, res) => {
-    const { albumId, name, artist, coverImage } = req.body;
-    const userId = req.user.id; 
 
-    if (!albumId || !name || !artist) {
-        return res.status(400).json({ message: 'Missing album information.' });
-    }
 
-    try {
-        const favorite = {
-            userId: userId,
-            albumId: albumId,
-            name: name,
-            artist: artist,
-            coverImage: coverImage,
-            savedAt: admin.firestore.FieldValue.serverTimestamp()
-        };
+// --- Journal API ---
 
-        const docRef = await firestoreDb.collection('favorites').add(favorite);
-        res.status(201).json({ message: 'Album saved to favorites!', id: docRef.id });
+app.post('/api/journal', authenticateToken, async (req, res) => {
+  const { albumId, albumName, artist, coverImage, rating, review, listenedDate } = req.body;
+  const userId = req.user.id;
 
-    } catch (error) {
-        console.error('Error saving to Firestore:', error);
-        res.status(500).json({ message: 'Server error while saving favorite.' });
-    }
-});
-
-app.get('/api/favorites', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-
-    try {
-        const snapshot = await firestoreDb.collection('favorites').where('userId', '==', userId).orderBy('savedAt', 'desc').get();
-        if (snapshot.empty) {
-            return res.status(200).json([]);
-        }
-
-        const favorites = [];
-        snapshot.forEach(doc => {
-            favorites.push({ id: doc.id, ...doc.data() });
-        });
-
-        res.status(200).json(favorites);
-    } catch (error) {
-        console.error('Error fetching favorites:', error);
-        res.status(500).json({ message: 'Server error while fetching favorites.' });
-    }
-});
-
-app.get('/api/album/:id', authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  const token = await getSpotifyToken();
-  if (!token) {
-    return res.status(503).json({ message: 'Could not connect to Spotify.' });
+  // Validate required fields
+  if (!albumId || !albumName || !artist || !rating || !listenedDate) {
+    return res.status(400).json({ message: 'Missing required fields.' });
+  }
+  const ratingNum = parseInt(rating, 10);
+  if (isNaN(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+    return res.status(400).json({ message: 'Rating must be an integer between 1 and 5.' });
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(listenedDate) || isNaN(new Date(listenedDate).getTime())) {
+    return res.status(400).json({ message: 'listenedDate must be a valid YYYY-MM-DD date.' });
+  }
+  if (review && review.length > 2000) {
+    return res.status(400).json({ message: 'Review must be 2000 characters or fewer.' });
   }
 
   try {
-    const response = await axios.get(`https://api.spotify.com/v1/albums/${id}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
+    // Duplicate check
+    const duplicate = await firestoreDb.collection('journal')
+      .where('userId', '==', userId)
+      .where('albumId', '==', albumId)
+      .limit(1)
+      .get();
+    if (!duplicate.empty) {
+      return res.status(409).json({
+        message: 'You have already logged this album.',
+        entryId: duplicate.docs[0].id
+      });
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const docRef = await firestoreDb.collection('journal').add({
+      userId,
+      albumId,
+      albumName,
+      artist,
+      coverImage: coverImage || '',
+      rating: ratingNum,
+      review: review || '',
+      listenedDate,
+      createdAt: now,
+      updatedAt: now
     });
 
-    const album = response.data;
-    const albumDetails = {
-      id: album.id,
-      name: album.name,
-      artist: album.artists.map(a => a.name).join(', '),
-      coverImage: album.images.length ? album.images[0].url : '',
-      releaseDate: album.release_date,
-      popularity: album.popularity,
-      totalTracks: album.total_tracks,
-      tracks: album.tracks.items.map(track => ({ name: track.name, duration: track.duration_ms, track_number: track.track_number }))
-    };
-
-    res.status(200).json(albumDetails);
+    res.status(201).json({ entryId: docRef.id, message: 'Entry saved.' });
   } catch (error) {
-    console.error(`Error fetching album details for ${id}:`, error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
-    res.status(500).json({ message: 'Error fetching album details.' });
+    console.error('Error creating journal entry:', error);
+    res.status(500).json({ message: 'Database error. Please try again.' });
   }
 });
 
+app.get('/api/journal', authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const snapshot = await firestoreDb.collection('journal')
+      .where('userId', '==', userId)
+      .orderBy('listenedDate', 'desc')
+      .get();
+
+    const entries = [];
+    snapshot.forEach(doc => {
+      entries.push({ entryId: doc.id, ...doc.data() });
+    });
+
+    res.status(200).json(entries);
+  } catch (error) {
+    console.error('Error fetching journal entries:', error);
+    res.status(500).json({ message: 'Database error. Please try again.' });
+  }
+});
+
+app.patch('/api/journal/:entryId', authenticateToken, async (req, res) => {
+  const { entryId } = req.params;
+  const userId = req.user.id;
+  const { rating, review, listenedDate } = req.body;
+
+  if (rating === undefined && review === undefined && listenedDate === undefined) {
+    return res.status(400).json({ message: 'At least one field (rating, review, listenedDate) must be provided.' });
+  }
+
+  try {
+    const docRef = firestoreDb.collection('journal').doc(entryId);
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ message: 'Entry not found.' });
+    }
+    if (doc.data().userId !== userId) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const updates = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+    if (rating !== undefined) {
+      const ratingNum = parseInt(rating, 10);
+      if (isNaN(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+        return res.status(400).json({ message: 'Rating must be an integer between 1 and 5.' });
+      }
+      updates.rating = ratingNum;
+    }
+    if (review !== undefined) updates.review = review;
+    if (listenedDate !== undefined) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(listenedDate) || isNaN(new Date(listenedDate).getTime())) {
+        return res.status(400).json({ message: 'listenedDate must be a valid YYYY-MM-DD date.' });
+      }
+      updates.listenedDate = listenedDate;
+    }
+    if (review !== undefined && review.length > 2000) {
+      return res.status(400).json({ message: 'Review must be 2000 characters or fewer.' });
+    }
+
+    await docRef.update(updates);
+    res.status(200).json({ message: 'Entry updated.' });
+  } catch (error) {
+    console.error('Error updating journal entry:', error);
+    res.status(500).json({ message: 'Database error. Please try again.' });
+  }
+});
+
+app.delete('/api/journal/:entryId', authenticateToken, async (req, res) => {
+  const { entryId } = req.params;
+  const userId = req.user.id;
+
+  try {
+    const docRef = firestoreDb.collection('journal').doc(entryId);
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ message: 'Entry not found.' });
+    }
+    if (doc.data().userId !== userId) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    await docRef.delete();
+    res.status(200).json({ message: 'Entry deleted.' });
+  } catch (error) {
+    console.error('Error deleting journal entry:', error);
+    res.status(500).json({ message: 'Database error. Please try again.' });
+  }
+});
+
+// --- 404 Handler ---
+app.use((req, res) => {
+  res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
+});
 
 // --- Server Startup ---
 function getPort() {
@@ -231,5 +393,4 @@ function getPort() {
 const PORT = getPort();
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  getSpotifyToken();
 });
