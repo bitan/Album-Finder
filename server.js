@@ -1,6 +1,13 @@
 require('dotenv').config();
 
 // --- Environment Validation (must run before anything else) ---
+// Debug: log which required vars are present (values hidden)
+console.log('ENV CHECK:', {
+  JWT_SECRET: !!process.env.JWT_SECRET,
+  FIREBASE_SERVICE_ACCOUNT_JSON: !!process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
+  GOOGLE_APPLICATION_CREDENTIALS: !!process.env.GOOGLE_APPLICATION_CREDENTIALS,
+  NODE_ENV: process.env.NODE_ENV
+});
 // GOOGLE_APPLICATION_CREDENTIALS is only required in local dev mode
 // (when FIREBASE_SERVICE_ACCOUNT_JSON is not set)
 const REQUIRED_ENV = ['JWT_SECRET'];
