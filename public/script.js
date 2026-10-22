@@ -1,577 +1,414 @@
-// --- XSS Sanitizer ---
-function sanitize(str) {
-  if (str == null) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+﻿function sanitize(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');}
 
-const app = {
-  // --- UI Elements ---
-  authContainer: document.getElementById('auth-container'),
-  loginView: document.getElementById('login-view'),
-  registerView: document.getElementById('register-view'),
-  dashboard: document.getElementById('dashboard'),
-  message: document.getElementById('message'),
-  albumResultsContainer: document.getElementById('album-results'),
-  loginForm: document.getElementById('login-form'),
-  regForm: document.getElementById('reg-form'),
-  searchForm: document.getElementById('search-form'),
-  modal: document.getElementById('album-modal'),
-  modalBody: document.getElementById('modal-body'),
-  closeButton: document.querySelector('.close-button'),
-  loginCtaBtn: document.getElementById('login-cta-btn'),
-  signupCtaBtn: document.getElementById('signup-cta-btn'),
-  logoutButton: document.getElementById('logout-button'),
-  myJournalLink: document.getElementById('my-journal-link'),
-  closeAuthModalBtn: document.querySelector('.close-auth-modal'),
+const app={
+  token:null,username:null,selectedRating:0,
+  _selectedAlbum:null,
 
-  // Journal modal elements (populated in init after DOM is ready)
-  journalModal: null,
-  jmAlbumName: null,
-  jmArtistName: null,
-  jmStars: null,
-  jmReview: null,
-  jmDate: null,
-  jmSubmit: null,
-  jmMessage: null,
-  jmAlbumId: null,
-  jmCoverImage: null,
-  jmEntryId: null,
-  jmRatingError: null,
-  jmDateError: null,
-  jmReviewError: null,
+  get(id){return document.getElementById(id);},
 
-  // --- App State ---
-  token: null,
-  username: null,
-  selectedRating: 0,
+  init(){
+    this.checkTheme();
 
-  // --- App Initialization ---
-  init() {
-    this.login = this.login.bind(this);
-    this.register = this.register.bind(this);
-    this.searchAlbums = this.searchAlbums.bind(this);
-    this.logout = this.logout.bind(this);
-    this.openModal = this.openModal.bind(this);
-    this.closeModal = this.closeModal.bind(this);
-    this.submitJournalForm = this.submitJournalForm.bind(this);
-    this.closeJournalModal = this.closeJournalModal.bind(this);
+    // cache refs
+    this.loginForm=this.get('login-form');
+    this.regForm=this.get('reg-form');
+    this.searchForm=this.get('search-form');
+    this.authContainer=this.get('auth-container');
+    this.loginView=this.get('login-view');
+    this.registerView=this.get('register-view');
+    this.dashboard=this.get('dashboard');
+    this.message=this.get('message');
+    this.journalModal=this.get('journal-modal');
+    this.jmAlbumName=this.get('jm-album-name');
+    this.jmArtistName=this.get('jm-artist-name');
+    this.jmStars=this.get('jm-stars');
+    this.jmReview=this.get('jm-review');
+    this.jmDate=this.get('jm-date');
+    this.jmSubmit=this.get('jm-submit');
+    this.jmMessage=this.get('jm-message');
+    this.jmAlbumId=this.get('jm-album-id');
+    this.jmCoverImage=this.get('jm-cover-image');
+    this.jmEntryId=this.get('jm-entry-id');
+    this.jmRatingError=this.get('jm-rating-error');
+    this.jmDateError=this.get('jm-date-error');
+    this.jmReviewError=this.get('jm-review-error');
 
-    // Journal modal elements
-    this.journalModal = document.getElementById('journal-modal');
-    this.jmAlbumName = document.getElementById('jm-album-name');
-    this.jmArtistName = document.getElementById('jm-artist-name');
-    this.jmStars = document.getElementById('jm-stars');
-    this.jmReview = document.getElementById('jm-review');
-    this.jmDate = document.getElementById('jm-date');
-    this.jmSubmit = document.getElementById('jm-submit');
-    this.jmMessage = document.getElementById('jm-message');
-    this.jmAlbumId = document.getElementById('jm-album-id');
-    this.jmCoverImage = document.getElementById('jm-cover-image');
-    this.jmEntryId = document.getElementById('jm-entry-id');
-    this.jmRatingError = document.getElementById('jm-rating-error');
-    this.jmDateError = document.getElementById('jm-date-error');
-    this.jmReviewError = document.getElementById('jm-review-error');
+    // event listeners
+    this.loginForm.addEventListener('submit',e=>this.login(e));
+    this.regForm.addEventListener('submit',e=>this.register(e));
+    this.searchForm.addEventListener('submit',e=>this.searchAlbums(e));
+    this.get('logout-button').addEventListener('click',()=>this.logout());
+    this.get('login-cta-btn').addEventListener('click',()=>this.showAuthForms(true));
+    this.get('signup-cta-btn').addEventListener('click',()=>this.showAuthForms(false));
+    document.querySelector('.close-auth-modal').addEventListener('click',()=>this.hideAuthForms());
+    this.authContainer.addEventListener('click',e=>{if(e.target===this.authContainer)this.hideAuthForms();});
+    document.querySelectorAll('.toggle-form').forEach(el=>el.addEventListener('click',e=>{e.preventDefault();this.toggleView();}));
+    document.querySelector('.close-journal-modal').addEventListener('click',()=>this.closeJournalModal());
+    this.jmSubmit.addEventListener('click',e=>this.submitJournalForm(e));
+    window.addEventListener('click',e=>{if(e.target===this.journalModal)this.closeJournalModal();});
+    document.querySelectorAll('.toggle-password').forEach(btn=>btn.addEventListener('click',()=>{
+      const inp=document.getElementById(btn.dataset.target);
+      inp.type=inp.type==='password'?'text':'password';
+      btn.textContent=inp.type==='password'?'👁':'🙈';
+    }));
 
-    // Event Listeners
-    this.loginForm.addEventListener('submit', this.login);
-    this.regForm.addEventListener('submit', this.register);
-    this.searchForm.addEventListener('submit', this.searchAlbums);
-    this.logoutButton.addEventListener('click', this.logout);
-    this.loginCtaBtn.addEventListener('click', () => this.showAuthForms(true));
-    this.signupCtaBtn.addEventListener('click', () => this.showAuthForms(false));
-    this.closeAuthModalBtn.addEventListener('click', () => this.hideAuthForms());
-    this.authContainer.addEventListener('click', (e) => {
-      if (e.target === this.authContainer) this.hideAuthForms();
-    });
-    this.closeButton.addEventListener('click', this.closeModal);
-    window.addEventListener('click', (event) => {
-      if (event.target === this.modal) this.closeModal();
-      if (event.target === this.journalModal) this.closeJournalModal();
-    });
-    document.querySelectorAll('.toggle-form').forEach(el => {
-      el.addEventListener('click', (e) => {
-        e.preventDefault();
-        this.toggleView();
-      });
-    });
+    // landing CTA
+    const lsBtn=this.get('landing-signup-btn');
+    if(lsBtn)lsBtn.addEventListener('click',()=>this.showAuthForms(false));
 
-    // Journal modal listeners
-    document.querySelector('.close-journal-modal').addEventListener('click', this.closeJournalModal);
-    this.jmSubmit.addEventListener('click', this.submitJournalForm);
-
-    // Password visibility toggles
-    document.querySelectorAll('.toggle-password').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const input = document.getElementById(btn.dataset.target);
-        input.type = input.type === 'password' ? 'text' : 'password';
-        btn.textContent = input.type === 'password' ? '👁' : '🙈';
-      });
-    });
-
-    // Landing page buttons
-    const landingSignup = document.getElementById('landing-signup-btn');
-    if (landingSignup) landingSignup.addEventListener('click', () => this.showAuthForms(false));
-    // login-cta-btn and signup-cta-btn already wired above
-
-    // Mobile: back button closes the slide-over right panel
-    const backBtn = document.getElementById('ds-back-btn');
-    if (backBtn) {
-      backBtn.addEventListener('click', () => {
-        const rightPanel = document.getElementById('ds-right-panel');
-        if (rightPanel) rightPanel.classList.remove('mobile-open');
+    // Live username validation — warn if user types an @
+    const regUsernameInput=this.get('reg-username');
+    if(regUsernameInput){
+      regUsernameInput.addEventListener('input',()=>{
+        const hint=document.querySelector('.auth-field-hint');
+        if(regUsernameInput.value.includes('@')){
+          hint.textContent='⚠ That looks like an email — please choose a username instead';
+          hint.style.color='var(--error)';
+        }else{
+          hint.textContent='Letters, numbers, underscores only — no email addresses';
+          hint.style.color='';
+        }
       });
     }
+
+    // detail panel
+    this.get('ds-detail-close').addEventListener('click',()=>this.closeDetailPanel());
+    this.get('ds-panel-overlay').addEventListener('click',()=>this.closeDetailPanel());
+    this.get('ds-journal-btn').addEventListener('click',()=>{if(this._selectedAlbum)this.openJournalModal(this._selectedAlbum);});
+    this.get('ds-tracks-btn').addEventListener('click',()=>{if(this._selectedAlbum)this.loadTracklist(this._selectedAlbum.id);});
 
     this.checkForToken();
   },
 
-  // --- Authentication (JWT) ---
-  checkForToken() {
-    this.token = localStorage.getItem('authToken');
-    this.username = localStorage.getItem('username');
-    if (this.token && this.username) {
-      this.showDashboard();
-    } else {
-      this.showLandingView();
-    }
-  },
-
-  async register(event) {
-    event.preventDefault();
-    const username = document.getElementById('reg-username').value;
-    const password = document.getElementById('reg-password').value;
-    const btn = document.getElementById('reg-submit-btn');
-    btn.querySelector('.btn-text').style.display = 'none';
-    btn.querySelector('.btn-spinner').style.display = 'inline';
-    btn.disabled = true;
-    try {
-      const response = await fetch('/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      const data = await response.json();
-      if (response.ok) {
-        this.regForm.reset();
-        this.token = data.token;
-        this.username = data.username;
-        localStorage.setItem('authToken', this.token);
-        localStorage.setItem('username', this.username);
-        this.showDashboard();
-        this.hideAuthForms();
-      } else {
-        this.displayMessage(data.message || 'Registration failed.', 'error');
-      }
-    } catch (error) {
-      this.displayMessage('Could not connect to the server.', 'error');
-    } finally {
-      btn.querySelector('.btn-text').style.display = 'inline';
-      btn.querySelector('.btn-spinner').style.display = 'none';
-      btn.disabled = false;
-    }
-  },
-
-  async login(event) {
-    event.preventDefault();
-    const username = document.getElementById('login-username').value;
-    const password = document.getElementById('login-password').value;
-    const btn = document.getElementById('login-submit-btn');
-    btn.querySelector('.btn-text').style.display = 'none';
-    btn.querySelector('.btn-spinner').style.display = 'inline';
-    btn.disabled = true;
-    try {
-      const response = await fetch('/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      const data = await response.json();
-      if (response.ok) {
-        this.loginForm.reset();
-        this.token = data.token;
-        this.username = data.username;
-        localStorage.setItem('authToken', this.token);
-        localStorage.setItem('username', this.username);
-        this.showDashboard();
-        this.hideAuthForms();
-      } else {
-        this.displayMessage(data.message || 'Login failed.', 'error');
-      }
-    } catch (error) {
-      this.displayMessage('Could not connect to the server.', 'error');
-    } finally {
-      btn.querySelector('.btn-text').style.display = 'inline';
-      btn.querySelector('.btn-spinner').style.display = 'none';
-      btn.disabled = false;
-    }
-  },
-
-  logout() {
-    this.token = null;
-    this.username = null;
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('username');
-    this.showLandingView();
-  },
-
-  // --- Album Search ---
-  async searchAlbums(event) {
-    event.preventDefault();
-    const query = document.getElementById('search-query').value;
-    this.albumResultsContainer.innerHTML = '<div class="loading">Searching...</div>';
-    try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
-        headers: { 'Authorization': `Bearer ${this.token}` }
-      });
-      const data = await response.json();
-      if (response.ok) {
-        this.displayAlbums(data);
-      } else {
-        this.albumResultsContainer.innerHTML = `<div class="error">${sanitize(data.message) || 'Search failed.'}</div>`;
-        if (response.status === 401 || response.status === 403) {
-          this.logout();
-        }
-      }
-    } catch (error) {
-      this.albumResultsContainer.innerHTML = '<div class="error">Could not connect to the server.</div>';
-    }
-  },
-
-  // --- UI Updates ---
-  displayAlbums(albums) {
-    this.albumResultsContainer.innerHTML = '';
-    if (!albums || albums.length === 0) {
-      this.albumResultsContainer.innerHTML = '<div class="ds-empty"><p>No albums found</p></div>';
-      return;
-    }
-
-    albums.forEach((album, idx) => {
-      const row = document.createElement('div');
-      row.className = 'ds-track-row';
-      row.innerHTML = `
-        <span class="ds-track-num">${String(idx + 1).padStart(2, '0')}</span>
-        <img class="ds-track-ico" src="${sanitize(album.coverImage)}" alt="">
-        <div class="ds-track-info">
-          <p class="ds-track-name">${sanitize(album.name)}</p>
-          <small>${sanitize(album.artist)}</small>
-        </div>
-        <span class="ds-track-year">${album.releaseDate ? sanitize(String(album.releaseDate).slice(0,4)) : ''}</span>
-      `;
-      row.addEventListener('click', () => {
-        document.querySelectorAll('.ds-track-row').forEach(r => r.classList.remove('active'));
-        row.classList.add('active');
-        const vinyl = document.getElementById('ds-vinyl');
-        if (vinyl) { vinyl.classList.remove('spinning'); void vinyl.offsetWidth; vinyl.classList.add('spinning'); }
-        const np = document.getElementById('ds-now-playing');
-        if (np) np.textContent = `${album.name} — ${album.artist}`;
-        this.showRightPanel(album);
-      });
-      this.albumResultsContainer.appendChild(row);
+  checkTheme(){
+    const t=document.getElementById('theme-toggle');
+    if(!t)return;
+    const saved=localStorage.getItem('theme')||'dark';
+    if(saved==='light'){document.documentElement.setAttribute('data-theme','light');t.textContent='☾';}
+    else{document.documentElement.removeAttribute('data-theme');t.textContent='☀';}
+    t.addEventListener('click',()=>{
+      const isLight=document.documentElement.getAttribute('data-theme')==='light';
+      if(isLight){document.documentElement.removeAttribute('data-theme');localStorage.setItem('theme','dark');t.textContent='☀';}
+      else{document.documentElement.setAttribute('data-theme','light');localStorage.setItem('theme','light');t.textContent='☾';}
     });
   },
 
-  showRightPanel(album) {
-    const empty = document.getElementById('ds-right-empty');
-    const detail = document.getElementById('ds-album-detail');
-    if (empty) empty.style.display = 'none';
-    if (detail) detail.style.display = 'flex';
-
-    const coverA = document.getElementById('ds-cover-a');
-    const coverB = document.getElementById('ds-cover-b');
-    if (coverA) coverA.style.background = `url('${album.coverImage}') center/cover`;
-    if (coverB) coverB.style.background = `url('${album.coverImage}') center/cover, linear-gradient(135deg,#f3e8d0,#d9c8a8)`;
-
-    const artistEl = document.getElementById('ds-detail-artist');
-    const titleEl  = document.getElementById('ds-detail-title-el');
-    const yearEl   = document.getElementById('ds-detail-year');
-    const descEl   = document.getElementById('ds-detail-desc');
-
-    if (artistEl) artistEl.textContent = album.artist.toUpperCase();
-    if (titleEl) {
-      const firstText = titleEl.childNodes[0];
-      if (firstText) firstText.textContent = `Album: ${album.name} `;
-    }
-    if (yearEl) yearEl.textContent = album.releaseDate ? album.releaseDate.slice(0,4) : '';
-    if (descEl) descEl.textContent = `${album.name} by ${album.artist}.${album.releaseDate ? ' Released ' + album.releaseDate.slice(0,4) + '.' : ''} Click "Add to Journal" to log your listen and write a personal review.`;
-
-    const journalBtn = document.getElementById('ds-journal-btn');
-    const tracksBtn  = document.getElementById('ds-tracks-btn');
-    const heartBtn   = document.getElementById('ds-heart-btn');
-    const handler = () => this.openJournalModal({ id: album.id, name: album.name, artist: album.artist, coverImage: album.coverImage });
-    if (journalBtn) journalBtn.onclick = handler;
-    if (heartBtn)   heartBtn.onclick = handler;
-    if (tracksBtn)  tracksBtn.onclick = () => this.openModal(album.id);
-
-    // On mobile: slide up the right panel
-    const rightPanel = document.getElementById('ds-right-panel');
-    if (rightPanel && window.innerWidth <= 768) {
-      rightPanel.classList.add('mobile-open');
-    }
+  checkForToken(){
+    this.token=localStorage.getItem('authToken');
+    this.username=localStorage.getItem('username');
+    if(this.token&&this.username){this.showDashboard();}else{this.showLandingView();}
   },
 
-  // --- Album Detail Modal ---
-  async openModal(albumId) {
-    this.modal.style.display = 'flex';
-    this.modalBody.innerHTML = '<div class="loading">Loading details...</div>';
-    try {
-      const response = await fetch(`/api/album/${albumId}`, {
-        headers: { 'Authorization': `Bearer ${this.token}` }
-      });
-      const album = await response.json();
-      if (response.ok) {
-        this.modalBody.innerHTML = `
-          <div class="album-art-container">
-            <img src="${sanitize(album.coverImage)}" alt="${sanitize(album.name)} cover">
-            <div class="vinyl-disc"></div>
-          </div>
-          <div>
-            <h2>${sanitize(album.name)}</h2>
-            <p class="artist-name">${sanitize(album.artist)}</p>
-            <div class="stats-container">
-              <div class="stat-card">
-                <p class="stat-title">Total Tracks</p>
-                <p class="stat-value">${sanitize(String(album.totalTracks))}</p>
-              </div>
-              <div class="stat-card">
-                <p class="stat-title">Released</p>
-                <p class="stat-value" style="font-size:1.4rem;">${sanitize(album.releaseDate || '—')}</p>
-              </div>
-            </div>
-            <div class="track-list-container">
-              <h3>Tracklist</h3>
-              <ul class="track-list">
-                ${album.tracks.map(track => `
-                  <li>
-                    <span class="track-number">${String(track.track_number).padStart(2, '0')}</span>
-                    <span class="track-name">${sanitize(track.name)}</span>
-                    <span class="track-duration">${this.formatDuration(track.duration_ms)}</span>
-                  </li>
-                `).join('')}
-              </ul>
-            </div>
-          </div>
-        `;
-      } else {
-        this.modalBody.innerHTML = `<div class="error">${sanitize(album.message) || 'Could not load album details.'}</div>`;
-      }
-    } catch (error) {
-      this.modalBody.innerHTML = '<div class="error">Could not connect to the server.</div>';
-    }
-  },
-
-  closeModal() {
-    this.modal.style.display = 'none';
-  },
-
-  // --- Journal Modal ---
-  openJournalModal(album) {
-    this.jmAlbumName.textContent = album.name;
-    this.jmArtistName.textContent = album.artist;
-    this.jmAlbumId.value = album.id;
-    this.jmCoverImage.value = album.coverImage || '';
-    this.jmEntryId.value = '';
-
-    // Show cover art preview
-    const preview = document.getElementById('jm-cover-preview');
-    if (preview) {
-      preview.src = album.coverImage || '';
-      preview.style.display = album.coverImage ? 'block' : 'none';
-    }
-
-    const today = new Date().toISOString().split('T')[0];
-    this.jmDate.value = today;
-    this.jmReview.value = '';
-    this.jmMessage.textContent = '';
-    this.selectedRating = 0;
-    this.renderStars(this.jmStars, 0);
-    this.clearJournalErrors();
-    this.journalModal.style.display = 'flex';
-  },
-
-  openEditModal(entry) {
-    this.jmAlbumName.textContent = entry.albumName;
-    this.jmArtistName.textContent = entry.artist;
-    this.jmAlbumId.value = entry.albumId;
-    this.jmCoverImage.value = entry.coverImage || '';
-    this.jmEntryId.value = entry.entryId; // set = edit mode
-
-    this.jmDate.value = entry.listenedDate;
-    this.jmReview.value = entry.review || '';
-    this.jmMessage.textContent = '';
-    this.selectedRating = entry.rating;
-    this.renderStars(this.jmStars, entry.rating);
-    this.clearJournalErrors();
-
-    this.journalModal.style.display = 'flex';
-  },
-
-  closeJournalModal() {
-    this.journalModal.style.display = 'none';
-    this.jmReview.value = '';
-    this.jmDate.value = '';
-    this.jmMessage.textContent = '';
-    this.selectedRating = 0;
-    this.clearJournalErrors();
-  },
-
-  renderStars(container, selectedRating) {
-    container.innerHTML = '';
-    for (let i = 1; i <= 5; i++) {
-      const star = document.createElement('button');
-      star.type = 'button';
-      star.className = 'star-btn' + (i <= selectedRating ? ' star-selected' : '');
-      star.textContent = '★';
-      star.dataset.value = i;
-      star.addEventListener('click', () => {
-        this.selectedRating = i;
-        this.renderStars(container, i);
-      });
-      container.appendChild(star);
-    }
-  },
-
-  clearJournalErrors() {
-    this.jmRatingError.style.display = 'none';
-    this.jmDateError.style.display = 'none';
-    this.jmReviewError.style.display = 'none';
-  },
-
-  async submitJournalForm(event) {
-    event.preventDefault();
-    this.clearJournalErrors();
-
-    // Validate rating
-    if (!this.selectedRating || this.selectedRating < 1 || this.selectedRating > 5) {
-      this.jmRatingError.style.display = 'block';
-      return;
-    }
-
-    // Validate date not in the future
-    const listenedDate = this.jmDate.value;
-    const today = new Date().toISOString().split('T')[0];
-    if (listenedDate > today) {
-      this.jmDateError.style.display = 'block';
-      return;
-    }
-
-    // Validate review length
-    const review = this.jmReview.value;
-    if (review.length > 2000) {
-      this.jmReviewError.style.display = 'block';
-      return;
-    }
-
-    const entryId = this.jmEntryId.value;
-    const isEdit = !!entryId;
-
-    const payload = {
-      albumId: this.jmAlbumId.value,
-      albumName: this.jmAlbumName.textContent,
-      artist: this.jmArtistName.textContent,
-      coverImage: this.jmCoverImage.value,
-      rating: this.selectedRating,
-      review,
-      listenedDate
-    };
-
-    this.jmSubmit.disabled = true;
-    this.jmSubmit.querySelector('.btn-text').style.display = 'none';
-    this.jmSubmit.querySelector('.btn-spinner').style.display = 'inline';
-
-    try {
-      const url = isEdit ? `/api/journal/${entryId}` : '/api/journal';
-      const method = isEdit ? 'PATCH' : 'POST';
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.token}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        this.closeJournalModal();
-        this.displayMessage(isEdit ? 'Entry updated.' : 'Entry added to your journal.', 'success');
-      } else if (response.status === 409) {
-        // Duplicate — offer link to edit
-        this.jmMessage.innerHTML = `You have already logged this album. 
-          <a href="/journal.html?edit=${data.entryId}" class="toggle-form">Edit the existing entry</a>`;
-      } else {
-        this.jmMessage.textContent = data.message || 'Could not save entry. Please try again.';
-      }
-    } catch (error) {
-      this.jmMessage.textContent = 'Could not connect to the server.';
-    } finally {
-      this.jmSubmit.disabled = false;
-      this.jmSubmit.querySelector('.btn-text').style.display = 'inline';
-      this.jmSubmit.querySelector('.btn-spinner').style.display = 'none';
-    }
-  },
-
-  // --- Helpers ---
-  formatDuration(ms) {
-    const minutes = Math.floor(ms / 60000);
-    const seconds = ((ms % 60000) / 1000).toFixed(0);
-    return minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
-  },
-
-  showDashboard() {
-    document.getElementById('landing-page').style.display = 'none';
+  showDashboard(){
+    this.get('landing-page').style.display='none';
     document.body.classList.remove('landing-active');
-    this.dashboard.style.display = 'flex';
-    const hour = new Date().getHours();
-    const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-    const welcomeEl = document.getElementById('search-welcome');
-    if (welcomeEl) welcomeEl.textContent = `${greeting}${this.username ? ', ' + this.username : ''}`;
-    const dsUsername = document.getElementById('ds-username');
-    if (dsUsername) dsUsername.textContent = this.username || '';
-    const dsAvatar = document.getElementById('ds-avatar-initials');
-    if (dsAvatar && this.username) dsAvatar.textContent = this.username.charAt(0).toUpperCase();
-    const dsSectionTitle = document.getElementById('ds-section-title');
-    if (dsSectionTitle) dsSectionTitle.textContent = `${this.username}'s Collection`;
+    this.dashboard.style.display='block';
+    const u=this.get('ds-username');if(u)u.textContent=this.username||'';
+    const av=this.get('ds-avatar-initials');if(av&&this.username)av.textContent=this.username.charAt(0).toUpperCase();
+    // restore history list
+    const hist=JSON.parse(localStorage.getItem('searchHistory')||'[]');
+    if(hist.length>0)this.renderHistoryList(hist[0].albums);
   },
 
-  showLandingView() {
-    document.getElementById('landing-page').style.display = 'block';
+  showLandingView(){
+    this.get('landing-page').style.display='block';
     document.body.classList.add('landing-active');
-    this.dashboard.style.display = 'none';
+    this.dashboard.style.display='none';
   },
 
-  showAuthForms(isLogin) {
-    this.authContainer.style.display = 'flex';
-    if (isLogin) {
-      this.loginView.style.display = 'block';
-      this.registerView.style.display = 'none';
-    } else {
-      this.loginView.style.display = 'none';
-      this.registerView.style.display = 'block';
+  showAuthForms(isLogin){
+    this.authContainer.style.display='flex';
+    this.loginView.style.display=isLogin?'block':'none';
+    this.registerView.style.display=isLogin?'none':'block';
+    this.displayMessage('');
+  },
+
+  hideAuthForms(){this.authContainer.style.display='none';},
+
+  toggleView(){
+    const vis=this.loginView.style.display==='block';
+    this.loginView.style.display=vis?'none':'block';
+    this.registerView.style.display=vis?'block':'none';
+    this.displayMessage('');
+  },
+
+  displayMessage(t,type='message'){this.message.textContent=t;this.message.className='message '+type;},
+
+  logout(){
+    this.token=null;this.username=null;
+    localStorage.removeItem('authToken');localStorage.removeItem('username');
+    this.showLandingView();
+  },
+
+  async login(e){
+    e.preventDefault();
+    const u=document.getElementById('login-username').value;
+    const p=document.getElementById('login-password').value;
+    const btn=this.get('login-submit-btn');
+    btn.querySelector('.btn-text').style.display='none';
+    btn.querySelector('.btn-spinner').style.display='inline';
+    btn.disabled=true;
+    try{
+      const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+      const d=await r.json();
+      if(r.ok){this.token=d.token;this.username=d.username;localStorage.setItem('authToken',d.token);localStorage.setItem('username',d.username);this.showDashboard();this.hideAuthForms();}
+      else{this.displayMessage(d.message||'Login failed.','error');}
+    }catch(err){this.displayMessage('Could not connect.','error');}
+    finally{btn.querySelector('.btn-text').style.display='inline';btn.querySelector('.btn-spinner').style.display='none';btn.disabled=false;}
+  },
+
+  async register(e){
+    e.preventDefault();
+    const u=document.getElementById('reg-username').value.trim();
+    const p=document.getElementById('reg-password').value;
+    // Block email addresses being used as usernames
+    if(u.includes('@')){
+      this.displayMessage('Please use a username, not an email address.','error');
+      return;
     }
-    this.displayMessage('');
+    if(u.length<3){
+      this.displayMessage('Username must be at least 3 characters.','error');
+      return;
+    }
+    const btn=this.get('reg-submit-btn');
+    btn.querySelector('.btn-text').style.display='none';
+    btn.querySelector('.btn-spinner').style.display='inline';
+    btn.disabled=true;
+    try{
+      const r=await fetch('/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+      const d=await r.json();
+      if(r.ok){this.token=d.token;this.username=d.username;localStorage.setItem('authToken',d.token);localStorage.setItem('username',d.username);this.showDashboard();this.hideAuthForms();}
+      else{this.displayMessage(d.message||'Registration failed.','error');}
+    }catch(err){this.displayMessage('Could not connect.','error');}
+    finally{btn.querySelector('.btn-text').style.display='inline';btn.querySelector('.btn-spinner').style.display='none';btn.disabled=false;}
   },
 
-  hideAuthForms() {
-    this.authContainer.style.display = 'none';
+  async searchAlbums(e){
+    e.preventDefault();
+    const q=document.getElementById('search-query').value.trim();
+    if(!q)return;
+    const grid=this.get('ds-album-grid');
+    const resSec=this.get('ds-results-section');
+    const histSec=this.get('ds-history-section');
+    resSec.style.display='block';
+    histSec.style.display='none';
+    grid.innerHTML='<div class="ds-grid-loading">Searching...</div>';
+    // clean section title — no quotes
+    this.get('ds-results-label').textContent=sanitize(q);
+    // spin vinyl while searching
+    const disc=document.querySelector('.ds-hero-vinyl-disc');
+    if(disc){disc.classList.add('spinning');}
+    // reset after results load
+    setTimeout(()=>{if(disc)disc.classList.remove('spinning');},2000);
+    try{
+      const r=await fetch('/api/search?q='+encodeURIComponent(q),{headers:{Authorization:'Bearer '+this.token}});
+      const data=await r.json();
+      if(r.ok){this.renderGrid(data);this.addToHistory(data,q);}
+      else{grid.innerHTML='<div class="ds-grid-empty">'+(sanitize(data.message)||'Search failed.')+'</div>';if(r.status===401||r.status===403)this.logout();}
+    }catch(err){grid.innerHTML='<div class="ds-grid-empty">Could not connect.</div>';}
   },
 
-  toggleView() {
-    const isLoginVisible = this.loginView.style.display === 'block';
-    this.loginView.style.display = isLoginVisible ? 'none' : 'block';
-    this.registerView.style.display = isLoginVisible ? 'block' : 'none';
-    this.displayMessage('');
+  renderGrid(albums){
+    const grid=this.get('ds-album-grid');
+    const count=this.get('ds-results-count');
+    grid.innerHTML='';
+    if(!albums||albums.length===0){grid.innerHTML='<div class="ds-grid-empty">No albums found.</div>';count.textContent='';return;}
+    count.textContent='('+albums.length+')';
+    albums.forEach(album=>{
+      const card=document.createElement('div');
+      card.className='ds-album-card';
+      card.innerHTML=
+        '<img class="ds-album-card-img" src="'+sanitize(album.coverImage)+'" alt="'+sanitize(album.name)+'" loading="lazy">'+
+        '<div class="ds-album-card-info">'+
+          '<div class="ds-album-card-title">'+sanitize(album.name)+'</div>'+
+          '<div class="ds-album-card-meta">'+sanitize(album.artist)+(album.releaseDate?' · '+sanitize(String(album.releaseDate).slice(0,4)):'')+'</div>'+
+          '<button class="ds-album-card-add">+ Add to Journal</button>'+
+        '</div>';
+      card.querySelector('img').addEventListener('click',()=>this.openDetailPanel(album));
+      card.querySelector('.ds-album-card-title').addEventListener('click',()=>this.openDetailPanel(album));
+      card.querySelector('.ds-album-card-add').addEventListener('click',function(ev){ev.stopPropagation();app.openJournalModal(album);});
+      grid.appendChild(card);
+    });
   },
 
-  displayMessage(text, type = 'message') {
-    this.message.textContent = text;
-    this.message.className = `message ${type}`;
+  addToHistory(albums,query){
+    if(!albums||albums.length===0)return;
+    const stored=JSON.parse(localStorage.getItem('searchHistory')||'[]');
+    const filtered=stored.filter(e=>e.query!==query);
+    filtered.unshift({query,albums:albums.slice(0,12),ts:Date.now()});
+    localStorage.setItem('searchHistory',JSON.stringify(filtered.slice(0,5)));
+  },
+
+  renderHistoryList(albums){
+    const list=this.get('ds-history-list');
+    list.innerHTML='';
+    if(!albums||albums.length===0){list.innerHTML='<div class="ds-grid-empty">Search for an artist or album above to get started.</div>';return;}
+    albums.forEach((album,idx)=>{
+      const row=document.createElement('div');
+      row.className='ds-history-row';
+      row.innerHTML=
+        '<span class="ds-history-num">'+String(idx+1).padStart(2,'0')+'</span>'+
+        '<img class="ds-history-thumb" src="'+sanitize(album.coverImage)+'" alt="" loading="lazy">'+
+        '<div class="ds-history-info">'+
+          '<div class="ds-history-title">'+sanitize(album.name)+'</div>'+
+          '<div class="ds-history-artist">'+sanitize(album.artist)+'</div>'+
+        '</div>'+
+        '<span class="ds-history-year">'+(album.releaseDate?sanitize(String(album.releaseDate).slice(0,4)):'')+'</span>'+
+        '<button class="ds-history-add">+ Journal</button>';
+      row.querySelector('.ds-history-thumb').addEventListener('click',()=>this.openDetailPanel(album));
+      row.querySelector('.ds-history-title').addEventListener('click',()=>this.openDetailPanel(album));
+      row.querySelector('.ds-history-add').addEventListener('click',function(ev){ev.stopPropagation();app.openJournalModal(album);});
+      list.appendChild(row);
+    });
+  },
+
+  openDetailPanel(album){
+    this._selectedAlbum=album;
+    this.get('ds-detail-cover-img').src=album.coverImage||'';
+    this.get('ds-detail-artist').textContent=album.artist.toUpperCase();
+    this.get('ds-detail-title').textContent=album.name;
+    this.get('ds-detail-meta').textContent=(album.releaseDate?album.releaseDate.slice(0,4)+' · ':'')+album.artist;
+    this.get('ds-detail-stats').style.display='none';
+    this.get('ds-tracklist-title').style.display='none';
+    this.get('ds-tracklist').innerHTML='';
+    // now playing bar — always visible, update content
+    this.get('ds-now-thumb').src=album.coverImage||'';
+    this.get('ds-now-title').textContent=album.name;
+    this.get('ds-now-artist').textContent=album.artist;
+    // spin vinyl
+    const disc=document.querySelector('.ds-hero-vinyl-disc');
+    if(disc){disc.classList.remove('spinning');void disc.offsetWidth;disc.classList.add('spinning');}
+    this.get('ds-detail-panel').classList.add('open');
+    this.get('ds-panel-overlay').classList.add('open');
+  },
+
+  closeDetailPanel(){
+    this.get('ds-detail-panel').classList.remove('open');
+    this.get('ds-panel-overlay').classList.remove('open');
+  },
+
+  async loadTracklist(albumId){
+    const list=this.get('ds-tracklist');
+    this.get('ds-tracklist-title').style.display='block';
+    list.innerHTML='<li style="padding:.5rem 0;color:var(--text-3);font-size:.78rem">Loading…</li>';
+    try{
+      const r=await fetch('/api/album/'+albumId,{headers:{Authorization:'Bearer '+this.token}});
+      const album=await r.json();
+      if(r.ok){
+        this.get('ds-stat-tracks').textContent=album.totalTracks||'—';
+        this.get('ds-stat-year').textContent=album.releaseDate||'—';
+        this.get('ds-detail-stats').style.display='grid';
+        list.innerHTML=album.tracks.map((t,i)=>
+          '<li><span class="ds-detail-track-num">'+String(t.track_number||i+1).padStart(2,'0')+'</span>'+
+          '<span class="ds-detail-track-name">'+sanitize(t.name)+'</span>'+
+          '<span class="ds-detail-track-dur">'+this.fmtMs(t.duration_ms)+'</span></li>'
+        ).join('');
+      }else{list.innerHTML='<li style="color:var(--error);font-size:.78rem;padding:.5rem 0">Could not load tracklist.</li>';}
+    }catch(e){list.innerHTML='<li style="color:var(--error);font-size:.78rem;padding:.5rem 0">Connection error.</li>';}
+  },
+
+  fmtMs(ms){if(!ms)return'—';const m=Math.floor(ms/60000),s=Math.round((ms%60000)/1000);return m+':'+(s<10?'0':'')+s;},
+
+  openJournalModal(album){
+    this.jmAlbumName.textContent=album.name;
+    this.jmArtistName.textContent=album.artist;
+    this.jmAlbumId.value=album.id;
+    this.jmCoverImage.value=album.coverImage||'';
+    this.jmEntryId.value='';
+    const prev=this.get('jm-cover-preview');
+    if(prev){prev.src=album.coverImage||'';prev.style.display=album.coverImage?'block':'none';}
+    this.jmDate.value=new Date().toISOString().split('T')[0];
+    this.jmReview.value='';
+    this.jmMessage.textContent='';
+    this.selectedRating=0;
+    this.renderStars(this.jmStars,0);
+    this.clearJournalErrors();
+    this.journalModal.style.display='flex';
+  },
+
+  closeJournalModal(){
+    this.journalModal.style.display='none';
+    this.jmReview.value='';
+    this.jmDate.value='';
+    this.jmMessage.textContent='';
+    this.selectedRating=0;
+    this.clearJournalErrors();
+  },
+
+  renderStars(container,sel){
+    container.innerHTML='';
+    for(let i=1;i<=5;i++){
+      const s=document.createElement('button');
+      s.type='button';
+      s.className='star-btn'+(i<=sel?' star-selected':'');
+      s.textContent='★';
+      s.addEventListener('click',()=>{this.selectedRating=i;this.renderStars(container,i);});
+      container.appendChild(s);
+    }
+  },
+
+  clearJournalErrors(){
+    this.jmRatingError.style.display='none';
+    this.jmDateError.style.display='none';
+    this.jmReviewError.style.display='none';
+  },
+
+  async submitJournalForm(e){
+    e.preventDefault();
+    this.clearJournalErrors();
+    if(!this.selectedRating||this.selectedRating<1||this.selectedRating>5){this.jmRatingError.style.display='block';return;}
+    const listenedDate=this.jmDate.value;
+    if(listenedDate>new Date().toISOString().split('T')[0]){this.jmDateError.style.display='block';return;}
+    const review=this.jmReview.value;
+    if(review.length>2000){this.jmReviewError.style.display='block';return;}
+    const entryId=this.jmEntryId.value;
+    const isEdit=!!entryId;
+    const payload={albumId:this.jmAlbumId.value,albumName:this.jmAlbumName.textContent,artist:this.jmArtistName.textContent,coverImage:this.jmCoverImage.value,rating:this.selectedRating,review,listenedDate};
+    this.jmSubmit.disabled=true;
+    this.jmSubmit.querySelector('.btn-text').style.display='none';
+    this.jmSubmit.querySelector('.btn-spinner').style.display='inline';
+    try{
+      const url=isEdit?'/api/journal/'+entryId:'/api/journal';
+      const r=await fetch(url,{method:isEdit?'PATCH':'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+this.token},body:JSON.stringify(payload)});
+      const d=await r.json();
+      if(r.ok){this.closeJournalModal();this.displayMessage(isEdit?'Entry updated.':'Added to journal.','success');}
+      else if(r.status===409){this.jmMessage.innerHTML='Already logged. <a href="/journal.html?edit='+d.entryId+'" style="color:var(--accent)">Edit entry</a>';}
+      else{this.jmMessage.textContent=d.message||'Could not save.';}
+    }catch(err){this.jmMessage.textContent='Connection error.';}
+    finally{this.jmSubmit.disabled=false;this.jmSubmit.querySelector('.btn-text').style.display='inline';this.jmSubmit.querySelector('.btn-spinner').style.display='none';}
   }
 };
 
-document.addEventListener('DOMContentLoaded', () => app.init());
+document.addEventListener('DOMContentLoaded',()=>app.init());
+
+// Load real album art for landing page floating covers.
+// Uses our own /api/artwork proxy so iTunes CORS never blocks the request.
+async function loadLandingCovers() {
+  const covers = document.querySelectorAll('.lp-float-cover[data-itunes-id]');
+  if (!covers.length) return;
+
+  // Fetch all in parallel
+  const promises = Array.from(covers).map(async (cover) => {
+    const id = cover.dataset.itunesId;
+    try {
+      const r = await fetch('/api/artwork?id=' + id);
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d.url) {
+        const img = document.createElement('img');
+        img.src = d.url;
+        img.alt = d.name || '';
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;border-radius:8px;';
+        // fade in smoothly
+        img.style.opacity = '0';
+        img.style.transition = 'opacity .4s ease';
+        cover.appendChild(img);
+        img.onload = () => { img.style.opacity = '1'; };
+      }
+    } catch(e) { /* skip silently — cover stays as styled gradient */ }
+  });
+
+  await Promise.all(promises);
+}
+
+document.addEventListener('DOMContentLoaded', () => loadLandingCovers());

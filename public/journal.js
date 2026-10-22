@@ -1,314 +1,229 @@
-// --- XSS Sanitizer ---
-function sanitize(str) {
-  if (str == null) return '';
-  return String(str)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-}
+﻿function sanitize(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function formatDate(d){if(!d)return'';const[y,m,day]=d.split('-').map(Number);return new Date(y,m-1,day).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});}
 
-function formatDate(isoString) {
-  if (!isoString) return '';
-  const [year, month, day] = isoString.split('-').map(Number);
-  return new Date(year, month - 1, day)
-    .toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-}
+const journalApp={
+  token:null,username:null,entries:[],selectedRating:0,pendingDeleteId:null,
 
-function starsHtml(rating) {
-  return Array.from({ length: 5 }, (_, i) =>
-    `<span style="color:${i < rating ? '#e84a3a' : '#3a3a44'}">★</span>`
-  ).join('');
-}
+  init(){
+    this.token=localStorage.getItem('authToken');
+    this.username=localStorage.getItem('username');
+    if(!this.token||!this.username){window.location.href='/';return;}
 
-function computeStats(entries) {
-  const total = entries.length;
-  let average = '0.0';
-  if (total > 0) {
-    const sum = entries.reduce((a, e) => a + (e.rating || 0), 0);
-    average = (sum / total).toFixed(1);
-  }
-  let topRated = null;
-  if (total > 0) {
-    topRated = entries.reduce((best, e) => {
-      if (!best) return e;
-      if (e.rating > best.rating) return e;
-      if (e.rating === best.rating && e.listenedDate > best.listenedDate) return e;
-      return best;
-    }, null);
-  }
-  const now = new Date();
-  const cy = now.getFullYear(), cm = now.getMonth();
-  const seenMonth = new Set();
-  entries.forEach(e => {
-    if (!e.listenedDate) return;
-    const [y, m] = e.listenedDate.split('-').map(Number);
-    if (y === cy && m - 1 === cm) seenMonth.add(e.albumId);
-  });
-  return { total, average, topRated, monthlyCount: seenMonth.size };
-}
-
-const journalApp = {
-  token: null, username: null,
-  entries: [], selectedRating: 0, pendingDeleteId: null,
-  journalContainer: null, logoutButton: null,
-  journalModal: null, confirmModal: null,
-  jmAlbumName: null, jmArtistName: null, jmStars: null,
-  jmReview: null, jmDate: null, jmSubmit: null, jmMessage: null,
-  jmAlbumId: null, jmCoverImage: null, jmEntryId: null,
-  jmRatingError: null, jmDateError: null, jmReviewError: null,
-
-  init() {
-    this.token    = localStorage.getItem('authToken');
-    this.username = localStorage.getItem('username');
-    if (!this.token || !this.username) { window.location.href = '/'; return; }
-
-    // Populate header
-    const avatar = document.getElementById('jn-avatar');
-    if (avatar) avatar.textContent = this.username.charAt(0).toUpperCase();
-    const uname = document.getElementById('jn-username');
-    if (uname) uname.textContent = this.username;
-    const hour = new Date().getHours();
-    const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-    const greetEl = document.getElementById('jn-greeting');
-    if (greetEl) greetEl.textContent = `${greeting}, ${this.username}`;
-
-    // Cache refs
-    this.journalContainer = document.getElementById('journal-container');
-    this.logoutButton     = document.getElementById('logout-button');
-    this.journalModal     = document.getElementById('journal-modal');
-    this.confirmModal     = document.getElementById('confirm-modal');
-    this.jmAlbumName      = document.getElementById('jm-album-name');
-    this.jmArtistName     = document.getElementById('jm-artist-name');
-    this.jmStars          = document.getElementById('jm-stars');
-    this.jmReview         = document.getElementById('jm-review');
-    this.jmDate           = document.getElementById('jm-date');
-    this.jmSubmit         = document.getElementById('jm-submit');
-    this.jmMessage        = document.getElementById('jm-message');
-    this.jmAlbumId        = document.getElementById('jm-album-id');
-    this.jmCoverImage     = document.getElementById('jm-cover-image');
-    this.jmEntryId        = document.getElementById('jm-entry-id');
-    this.jmRatingError    = document.getElementById('jm-rating-error');
-    this.jmDateError      = document.getElementById('jm-date-error');
-    this.jmReviewError    = document.getElementById('jm-review-error');
-
-    this.submitEdit       = this.submitEdit.bind(this);
-    this.closeJournalModal = this.closeJournalModal.bind(this);
-
-    this.logoutButton.addEventListener('click', () => {
-      localStorage.clear(); window.location.href = '/';
+    // theme
+    const tt=document.getElementById('theme-toggle');
+    const saved=localStorage.getItem('theme')||'dark';
+    if(saved==='light'){document.documentElement.setAttribute('data-theme','light');tt.textContent='☾';}
+    else{document.documentElement.removeAttribute('data-theme');tt.textContent='☀';}
+    tt.addEventListener('click',()=>{
+      const isLight=document.documentElement.getAttribute('data-theme')==='light';
+      if(isLight){document.documentElement.removeAttribute('data-theme');localStorage.setItem('theme','dark');tt.textContent='☀';}
+      else{document.documentElement.setAttribute('data-theme','light');localStorage.setItem('theme','light');tt.textContent='☾';}
     });
-    document.querySelector('.close-journal-modal').addEventListener('click', this.closeJournalModal);
-    window.addEventListener('click', e => {
-      if (e.target === this.journalModal) this.closeJournalModal();
-      if (e.target === this.confirmModal) this.cancelDelete();
-    });
-    this.jmSubmit.addEventListener('click', this.submitEdit);
-    document.getElementById('confirm-delete-btn').addEventListener('click', () => this.deleteEntry(this.pendingDeleteId));
-    document.getElementById('cancel-delete-btn').addEventListener('click', () => this.cancelDelete());
-    document.getElementById('jn-back-btn').addEventListener('click', () => window.location.href = '/');
 
-    const params = new URLSearchParams(window.location.search);
-    const editId = params.get('edit');
-    this.loadJournal().then(() => {
-      if (editId) {
-        const e = this.entries.find(x => x.entryId === editId);
-        if (e) this.openEditModal(e);
-      }
+    // Fix: show only the username part (strip email domain if it looks like an email)
+    const displayName = this.username.includes('@')
+      ? this.username.split('@')[0]
+      : this.username;
+
+    // Avatar initial
+    const av=document.getElementById('jn-avatar');
+    if(av)av.textContent=displayName.charAt(0).toUpperCase();
+
+    // Nav username
+    const un=document.getElementById('jn-username');
+    if(un)un.textContent=displayName;
+
+    // Hero greeting — split into greeting line + name heading
+    const h=new Date().getHours();
+    const greeting=h<12?'Good morning':h<17?'Good afternoon':'Good evening';
+    const grLine=document.getElementById('jn-greeting-line');
+    if(grLine)grLine.textContent=greeting;
+    const nameTitle=document.getElementById('jn-username-title');
+    if(nameTitle)nameTitle.textContent=displayName;
+
+    document.getElementById('logout-button').addEventListener('click',()=>{localStorage.clear();window.location.href='/';});
+    document.querySelector('.close-journal-modal').addEventListener('click',()=>this.closeModal());
+    window.addEventListener('click',e=>{
+      if(e.target===document.getElementById('journal-modal'))this.closeModal();
+      if(e.target===document.getElementById('confirm-modal'))this.cancelDelete();
+    });
+    document.getElementById('jm-submit').addEventListener('click',e=>this.submitEdit(e));
+    document.getElementById('confirm-delete-btn').addEventListener('click',()=>this.deleteEntry(this.pendingDeleteId));
+    document.getElementById('cancel-delete-btn').addEventListener('click',()=>this.cancelDelete());
+
+    const params=new URLSearchParams(window.location.search);
+    const editId=params.get('edit');
+    this.loadJournal().then(()=>{
+      if(editId){const e=this.entries.find(x=>x.entryId===editId);if(e)this.openEditModal(e);}
     });
   },
 
-  async loadJournal() {
-    this.journalContainer.innerHTML = '<div class="ds-empty"><p>Loading…</p></div>';
-    try {
-      const res = await fetch('/api/journal', { headers: { Authorization: `Bearer ${this.token}` } });
-      if (res.status === 401 || res.status === 403) { localStorage.clear(); window.location.href = '/'; return; }
-      if (!res.ok) { this.journalContainer.innerHTML = '<div class="ds-empty"><p>Could not load journal</p></div>'; return; }
-      this.entries = await res.json();
+  async loadJournal(){
+    const c=document.getElementById('journal-container');
+    c.innerHTML='<div class="jn-empty">Loading…</div>';
+    try{
+      const r=await fetch('/api/journal',{headers:{Authorization:'Bearer '+this.token}});
+      if(r.status===401||r.status===403){localStorage.clear();window.location.href='/';return;}
+      if(!r.ok){c.innerHTML='<div class="jn-empty">Could not load journal.</div>';return;}
+      this.entries=await r.json();
       this.renderEntries(this.entries);
       this.renderStats(this.entries);
-    } catch {
-      this.journalContainer.innerHTML = '<div class="ds-empty"><p>Connection error</p></div>';
-    }
+    }catch{c.innerHTML='<div class="jn-empty">Connection error.</div>';}
   },
 
-  renderEntries(entries) {
-    this.journalContainer.innerHTML = '';
-    if (!entries || entries.length === 0) {
-      this.journalContainer.innerHTML = '<div class="ds-empty"><p>No entries yet — log an album!</p></div>';
+  renderEntries(entries){
+    const c=document.getElementById('journal-container');
+    c.innerHTML='';
+    // update count badge
+    const countEl=document.getElementById('jn-entry-count');
+    if(countEl)countEl.textContent=entries.length>0?'('+entries.length+')':'';
+
+    if(!entries||entries.length===0){
+      c.innerHTML='<div class="jn-empty">No entries yet.<br><a href="/">Search for an album</a> to start logging.</div>';
       return;
     }
-    entries.forEach((entry, idx) => {
-      const row = document.createElement('div');
-      row.className = 'ds-track-row';
-      row.innerHTML = `
-        <span class="ds-track-num">${String(idx + 1).padStart(2, '0')}</span>
-        <img class="ds-track-ico" src="${sanitize(entry.coverImage)}" alt="">
-        <div class="ds-track-info">
-          <p class="ds-track-name">${sanitize(entry.albumName)}</p>
-          <small>${sanitize(entry.artist)}</small>
-        </div>
-        <span class="ds-track-year" style="color:#e84a3a;font-size:11px;">${'★'.repeat(entry.rating || 0)}</span>
-      `;
-      row.addEventListener('click', () => {
-        document.querySelectorAll('.ds-track-row').forEach(r => r.classList.remove('active'));
-        row.classList.add('active');
-        // spin vinyl
-        const vinyl = document.getElementById('jn-vinyl');
-        if (vinyl) { vinyl.classList.remove('spinning'); void vinyl.offsetWidth; vinyl.classList.add('spinning'); }
-        // update now playing
-        const np = document.getElementById('jn-now-playing');
-        if (np) np.textContent = `${entry.albumName} — ${entry.artist}`;
-        this.showEntryDetail(entry);
-      });
-      this.journalContainer.appendChild(row);
+
+    entries.forEach(entry=>{
+      const card=document.createElement('div');
+      card.className='jn-entry-card';
+      // filled + hollow stars
+      const filledStars='★'.repeat(entry.rating||0);
+      const emptyStars='☆'.repeat(5-(entry.rating||0));
+      card.innerHTML=
+        '<img class="jn-entry-img" src="'+sanitize(entry.coverImage)+'" alt="'+sanitize(entry.albumName)+'" loading="lazy">'+
+        '<div class="jn-entry-info">'+
+          '<div class="jn-entry-title">'+sanitize(entry.albumName)+'</div>'+
+          '<div class="jn-entry-artist">'+sanitize(entry.artist)+'</div>'+
+          '<div class="jn-entry-date">'+formatDate(entry.listenedDate)+'</div>'+
+          '<div class="jn-entry-stars">'+filledStars+'<span style="opacity:.3">'+emptyStars+'</span></div>'+
+        '</div>'+
+        '<div class="jn-entry-actions">'+
+          '<button class="jn-entry-edit">Edit</button>'+
+          '<button class="jn-entry-del">✕</button>'+
+        '</div>';
+      card.querySelector('.jn-entry-edit').addEventListener('click',e=>{e.stopPropagation();this.openEditModal(entry);});
+      card.querySelector('.jn-entry-del').addEventListener('click',e=>{e.stopPropagation();this.confirmDelete(entry.entryId);});
+      c.appendChild(card);
     });
   },
 
-  showEntryDetail(entry) {
-    document.getElementById('jn-right-empty').style.display = 'none';
-    const detail = document.getElementById('jn-entry-detail');
-    detail.style.display = '';
-
-    // covers
-    const coverA = document.getElementById('jn-detail-cover-a');
-    const coverB = document.getElementById('jn-detail-cover-b');
-    if (coverA) coverA.style.background = `url('${entry.coverImage}') center/cover`;
-    if (coverB) coverB.style.background = `url('${entry.coverImage}') center/cover`;
-
-    document.getElementById('jn-detail-artist').textContent = entry.artist.toUpperCase();
-    document.getElementById('jn-detail-title').textContent  = entry.albumName;
-    document.getElementById('jn-detail-rating').textContent = '★'.repeat(entry.rating || 0) + ` ${entry.rating}/5`;
-    document.getElementById('jn-detail-date').textContent   = formatDate(entry.listenedDate);
-    document.getElementById('jn-detail-review').textContent = entry.review || 'No review written.';
-
-    document.getElementById('jn-edit-btn').onclick   = () => this.openEditModal(entry);
-    document.getElementById('jn-delete-btn').onclick = () => this.confirmDelete(entry.entryId);
-  },
-
-  renderStats(entries) {
-    const { total, average, topRated, monthlyCount } = computeStats(entries);
-    document.getElementById('stat-total').textContent   = total;
-    document.getElementById('stat-avg').textContent     = average;
-    document.getElementById('stat-monthly').textContent = monthlyCount;
-
-    const badge = document.getElementById('jn-total-badge');
-    if (badge) badge.textContent = total;
-
-    // update right panel empty state with top-rated
-    if (topRated) {
-      const ct = document.getElementById('jn-cover-top');
-      if (ct) ct.style.background = `url('${topRated.coverImage}') center/cover`;
-      const tn = document.getElementById('jn-top-album-name');
-      if (tn) { tn.childNodes[0].textContent = topRated.albumName + ' '; }
-      const ty = document.getElementById('jn-top-album-year');
-      if (ty) ty.textContent = topRated.listenedDate ? topRated.listenedDate.slice(0,4) : '';
+  renderStats(entries){
+    const total=entries.length;
+    document.getElementById('stat-total').textContent=total;
+    if(total>0){
+      const avg=(entries.reduce((a,e)=>a+(e.rating||0),0)/total).toFixed(1);
+      document.getElementById('stat-avg').textContent=avg;
+    }else{
+      document.getElementById('stat-avg').textContent='—';
     }
+    const now=new Date();const cy=now.getFullYear(),cm=now.getMonth();
+    const monthly=new Set(
+      entries
+        .filter(e=>{if(!e.listenedDate)return false;const[y,m]=e.listenedDate.split('-').map(Number);return y===cy&&m-1===cm;})
+        .map(e=>e.albumId)
+    ).size;
+    document.getElementById('stat-monthly').textContent=monthly;
   },
 
-  openEditModal(entry) {
-    this.jmAlbumName.textContent   = entry.albumName;
-    this.jmArtistName.textContent  = entry.artist;
-    this.jmAlbumId.value           = entry.albumId;
-    this.jmCoverImage.value        = entry.coverImage || '';
-    this.jmEntryId.value           = entry.entryId;
-    this.jmDate.value              = entry.listenedDate;
-    this.jmReview.value            = entry.review || '';
-    this.jmMessage.textContent     = '';
-    this.selectedRating            = entry.rating;
-    const preview = document.getElementById('jm-cover-preview');
-    if (preview) { preview.src = entry.coverImage || ''; preview.style.display = entry.coverImage ? 'block' : 'none'; }
-    this.renderStars(this.jmStars, entry.rating);
-    this.clearErrors();
-    this.journalModal.style.display = 'flex';
+  openEditModal(entry){
+    document.getElementById('jm-album-name').textContent=entry.albumName;
+    document.getElementById('jm-artist-name').textContent=entry.artist;
+    document.getElementById('jm-album-id').value=entry.albumId;
+    document.getElementById('jm-cover-image').value=entry.coverImage||'';
+    document.getElementById('jm-entry-id').value=entry.entryId;
+    document.getElementById('jm-date').value=entry.listenedDate;
+    document.getElementById('jm-review').value=entry.review||'';
+    document.getElementById('jm-message').textContent='';
+    const prev=document.getElementById('jm-cover-preview');
+    if(prev){prev.src=entry.coverImage||'';prev.style.display=entry.coverImage?'block':'none';}
+    this.selectedRating=entry.rating;
+    this.renderStars(document.getElementById('jm-stars'),entry.rating);
+    document.getElementById('jm-rating-error').style.display='none';
+    document.getElementById('jm-date-error').style.display='none';
+    document.getElementById('jm-review-error').style.display='none';
+    document.getElementById('journal-modal').style.display='flex';
   },
 
-  closeJournalModal() {
-    this.journalModal.style.display = 'none';
-    this.jmMessage.textContent = '';
-    this.selectedRating = 0;
-    this.clearErrors();
-  },
+  closeModal(){document.getElementById('journal-modal').style.display='none';},
 
-  renderStars(container, sel) {
-    container.innerHTML = '';
-    for (let i = 1; i <= 5; i++) {
-      const s = document.createElement('button');
-      s.type = 'button';
-      s.className = 'star-btn' + (i <= sel ? ' star-selected' : '');
-      s.textContent = '★';
-      s.addEventListener('click', () => { this.selectedRating = i; this.renderStars(container, i); });
+  renderStars(container,sel){
+    container.innerHTML='';
+    for(let i=1;i<=5;i++){
+      const s=document.createElement('button');
+      s.type='button';
+      s.className='star-btn'+(i<=sel?' star-selected':'');
+      s.textContent='★';
+      s.addEventListener('click',()=>{this.selectedRating=i;this.renderStars(container,i);});
       container.appendChild(s);
     }
   },
 
-  clearErrors() {
-    this.jmRatingError.style.display = 'none';
-    this.jmDateError.style.display   = 'none';
-    this.jmReviewError.style.display = 'none';
-  },
-
-  async submitEdit(event) {
-    event.preventDefault();
-    this.clearErrors();
-    if (!this.selectedRating || this.selectedRating < 1 || this.selectedRating > 5) { this.jmRatingError.style.display = 'block'; return; }
-    const listenedDate = this.jmDate.value;
-    if (listenedDate > new Date().toISOString().split('T')[0]) { this.jmDateError.style.display = 'block'; return; }
-    const review = this.jmReview.value;
-    if (review.length > 2000) { this.jmReviewError.style.display = 'block'; return; }
-
-    const entryId = this.jmEntryId.value;
-    const btnText = this.jmSubmit.querySelector('.btn-text');
-    const btnSpin = this.jmSubmit.querySelector('.btn-spinner');
-    this.jmSubmit.disabled = true;
-    if (btnText) btnText.style.display = 'none';
-    if (btnSpin) btnSpin.style.display = 'inline';
-
-    try {
-      const res = await fetch(`/api/journal/${entryId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
-        body: JSON.stringify({ rating: this.selectedRating, review, listenedDate })
+  async submitEdit(e){
+    e.preventDefault();
+    const re=document.getElementById('jm-rating-error');
+    const de=document.getElementById('jm-date-error');
+    const rve=document.getElementById('jm-review-error');
+    re.style.display='none';de.style.display='none';rve.style.display='none';
+    if(!this.selectedRating||this.selectedRating<1||this.selectedRating>5){re.style.display='block';return;}
+    const listenedDate=document.getElementById('jm-date').value;
+    if(listenedDate>new Date().toISOString().split('T')[0]){de.style.display='block';return;}
+    const review=document.getElementById('jm-review').value;
+    if(review.length>2000){rve.style.display='block';return;}
+    const entryId=document.getElementById('jm-entry-id').value;
+    const btn=document.getElementById('jm-submit');
+    btn.disabled=true;
+    btn.querySelector('.btn-text').style.display='none';
+    btn.querySelector('.btn-spinner').style.display='inline';
+    try{
+      const r=await fetch('/api/journal/'+entryId,{
+        method:'PATCH',
+        headers:{'Content-Type':'application/json',Authorization:'Bearer '+this.token},
+        body:JSON.stringify({rating:this.selectedRating,review,listenedDate})
       });
-      const data = await res.json();
-      if (res.ok) {
-        const idx = this.entries.findIndex(e => e.entryId === entryId);
-        if (idx !== -1) this.entries[idx] = { ...this.entries[idx], rating: this.selectedRating, review, listenedDate };
-        this.closeJournalModal();
+      const d=await r.json();
+      if(r.ok){
+        const idx=this.entries.findIndex(e=>e.entryId===entryId);
+        if(idx!==-1)this.entries[idx]={...this.entries[idx],rating:this.selectedRating,review,listenedDate};
+        this.closeModal();
         this.renderEntries(this.entries);
         this.renderStats(this.entries);
-      } else {
-        this.jmMessage.textContent = data.message || 'Could not update entry.';
+      }else{
+        document.getElementById('jm-message').textContent=d.message||'Could not update.';
       }
-    } catch { this.jmMessage.textContent = 'Connection error.'; }
-    finally {
-      this.jmSubmit.disabled = false;
-      if (btnText) btnText.style.display = 'inline';
-      if (btnSpin) btnSpin.style.display = 'none';
+    }catch{
+      document.getElementById('jm-message').textContent='Connection error.';
+    }finally{
+      btn.disabled=false;
+      btn.querySelector('.btn-text').style.display='inline';
+      btn.querySelector('.btn-spinner').style.display='none';
     }
   },
 
-  confirmDelete(entryId) { this.pendingDeleteId = entryId; this.confirmModal.style.display = 'flex'; },
-  cancelDelete()          { this.pendingDeleteId = null;    this.confirmModal.style.display = 'none'; },
+  confirmDelete(id){
+    this.pendingDeleteId=id;
+    document.getElementById('confirm-modal').style.display='flex';
+  },
 
-  async deleteEntry(entryId) {
-    this.confirmModal.style.display = 'none';
-    try {
-      const res = await fetch(`/api/journal/${entryId}`, {
-        method: 'DELETE', headers: { Authorization: `Bearer ${this.token}` }
-      });
-      if (res.ok) {
-        this.entries = this.entries.filter(e => e.entryId !== entryId);
-        // reset right panel
-        document.getElementById('jn-right-empty').style.display = '';
-        document.getElementById('jn-entry-detail').style.display = 'none';
+  cancelDelete(){
+    this.pendingDeleteId=null;
+    document.getElementById('confirm-modal').style.display='none';
+  },
+
+  async deleteEntry(id){
+    document.getElementById('confirm-modal').style.display='none';
+    try{
+      const r=await fetch('/api/journal/'+id,{method:'DELETE',headers:{Authorization:'Bearer '+this.token}});
+      if(r.ok){
+        this.entries=this.entries.filter(e=>e.entryId!==id);
         this.renderEntries(this.entries);
         this.renderStats(this.entries);
-      } else {
-        const d = await res.json();
-        alert(d.message || 'Could not delete.');
+      }else{
+        const d=await r.json();
+        alert(d.message||'Could not delete.');
       }
-    } catch { alert('Connection error.'); }
-    finally { this.pendingDeleteId = null; }
+    }catch{alert('Connection error.');}
+    finally{this.pendingDeleteId=null;}
   }
 };
 
-document.addEventListener('DOMContentLoaded', () => journalApp.init());
+document.addEventListener('DOMContentLoaded',()=>journalApp.init());

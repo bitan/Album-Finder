@@ -75,6 +75,29 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 // --- iTunes Search API ---
 // No credentials needed — iTunes API is free and open.
 
+// Public proxy for iTunes artwork lookup (used by landing page covers).
+// No auth required — just fetches public metadata.
+app.get('/api/artwork', async (req, res) => {
+  const { id } = req.query;
+  if (!id || !/^\d+$/.test(id)) {
+    return res.status(400).json({ message: 'Invalid id' });
+  }
+  try {
+    const response = await axios.get('https://itunes.apple.com/lookup', {
+      params: { id, entity: 'album' }
+    });
+    const result = response.data.results && response.data.results[0];
+    if (!result) return res.status(404).json({ message: 'Not found' });
+    const url = result.artworkUrl100
+      ? result.artworkUrl100.replace('100x100bb', '600x600bb')
+      : '';
+    res.json({ url, name: result.collectionName || result.trackName || '' });
+  } catch (err) {
+    console.error('Artwork proxy error:', err.message);
+    res.status(500).json({ message: 'Could not fetch artwork' });
+  }
+});
+
 app.get('/api/search', apiLimiter, authenticateToken, async (req, res) => {
   const { q } = req.query;
   if (!q) {
