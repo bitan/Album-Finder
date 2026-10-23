@@ -502,28 +502,134 @@ body.landing-active{overflow:hidden;height:100vh;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--bg-4);border-radius:3px;}
 
-/* ===== MOBILE ===== */
-@media(max-width:900px){
-  .ds-hero{grid-template-columns:1fr;padding:2rem 1.5rem;}
+/* ============================================================
+   RESPONSIVE — fix all 7 issues one by one
+   ============================================================ */
+
+/* Hide waveform on mobile — too cramped */
+@media(max-width:900px){.ds-hero-wave{display:none;}}
+
+/* ---- FIX 7: Tablet (768px) — new middle breakpoint ---- */
+@media(max-width:768px){
+  /* Navbar */
+  .ds-navbar{padding:.75rem 1.25rem;}
+  .ds-brand{display:none;} /* hide brand text, keep logo mark */
+  .ds-nav-user{display:none;} /* hide email on tablet */
+
+  /* Hero */
+  .ds-hero{grid-template-columns:1fr;padding:2rem 1.25rem;min-height:auto;}
   .ds-hero-vinyl{display:none;}
   .ds-hero-wave{display:none;}
-  .ds-main{padding:0 1.5rem 6rem;}
-  .ds-section-title{font-size:2rem;}
-  .ds-album-grid{grid-template-columns:repeat(2,1fr);}
-  .ds-detail-panel{width:100%;}
-  .jn-stats-row{grid-template-columns:1fr 1fr;}
-  .jn-stat-box:last-child{grid-column:1/-1;border-right:none;border-top:1px solid var(--border);}
-  .jn-main{padding:0 1.5rem 6rem;}
-  .jn-entry-grid{grid-template-columns:repeat(2,1fr);}
-  .jn-discover-cta{flex-direction:column;align-items:flex-start;gap:1rem;}
+  .ds-hero-text h1{font-size:clamp(2rem,6vw,3rem);}
+  .ds-hero-search{max-width:100%;}
+
+  /* Main */
+  .ds-main{padding:0 1.25rem 6rem;}
+  .ds-section-title{font-size:1.8rem;}
+  .ds-album-grid{grid-template-columns:repeat(3,1fr);gap:1rem;}
+
+  /* FIX 1: History list rows — drop year column, simplify layout */
+  .ds-history-row{
+    grid-template-columns:24px 44px 1fr auto;
+    gap:.75rem;padding:.75rem 0;
+  }
+  .ds-history-year{display:none;} /* drop year on tablet */
+
+  /* FIX 2: Detail panel — add top offset so it doesn't cover navbar */
+  .ds-detail-panel{
+    width:100%;
+    top:48px; /* navbar height */
+  }
+
+  /* FIX 3: Now-playing bar padding */
+  .ds-now-bar{padding:0 1.25rem;}
+  .ds-now-center{display:none;}
+
+  /* Journal */
+  .jn-hero{padding:2rem 1.25rem 1.5rem;}
+  .jn-stats-row{padding:1.25rem 1.25rem;}
+  .jn-main{padding:0 1.25rem 6rem;}
+  .jn-entry-grid{grid-template-columns:repeat(3,1fr);gap:1rem;}
+  .jn-section-title{font-size:1.8rem;}
 }
+
+/* ---- FIX 6 + others: Mobile (600px) ---- */
 @media(max-width:600px){
-  .lp-header{padding:1.25rem 1.5rem;}
+  /* Landing header */
+  .lp-header{padding:1rem 1.25rem;}
   .lp-header-nav{display:none;}
-  .lp-hero-title{font-size:clamp(3.5rem,15vw,6rem);}
-  .ds-navbar{padding:.9rem 1.25rem;}
-  .ds-album-grid{grid-template-columns:repeat(2,1fr);}
+  .lp-hero-title{font-size:clamp(3.2rem,14vw,5.5rem);}
+  .lp-hero-sub{font-size:.82rem;}
+
+  /* FIX 4: Hide most floating covers on small phones — keep just 2 */
+  .lp-float-cover:nth-child(1){width:clamp(75px,18vw,110px);}
+  .lp-float-cover:nth-child(2){display:none;}
+  .lp-float-cover:nth-child(3){display:none;}
+  .lp-float-cover:nth-child(4){width:clamp(80px,19vw,115px);}
+  .lp-float-cover:nth-child(5){display:none;}
+  .lp-float-cover:nth-child(6){display:none;}
+  .lp-float-cover:nth-child(7){display:none;}
+  .lp-float-cover:nth-child(8){display:none;}
+  .lp-float-cover:nth-child(9){display:none;}
+
+  /* Dashboard navbar */
+  .ds-navbar{padding:.7rem 1rem;}
+
+  /* Hero */
+  .ds-hero{padding:1.75rem 1rem;}
+  .ds-hero-text h1{font-size:clamp(1.8rem,7vw,2.4rem);}
+  .ds-main{padding:0 1rem 6rem;}
+  .ds-section-title{font-size:1.6rem;}
+  .ds-album-grid{grid-template-columns:repeat(2,1fr);gap:.85rem;}
+
+  /* FIX 1: History rows — even more compact */
+  .ds-history-row{
+    grid-template-columns:20px 38px 1fr auto;
+    gap:.6rem;padding:.65rem 0;
+  }
+  .ds-history-title{font-size:.85rem;}
+  .ds-history-add{padding:.25rem .6rem;font-size:.62rem;}
+
+  /* FIX 2: Detail panel full screen from top */
+  .ds-detail-panel{top:44px;}
+  .ds-detail-cover-wrap{height:200px;}
+
+  /* FIX 3: Now bar */
+  .ds-now-bar{padding:0 1rem;height:48px;}
+  .ds-now-thumb{width:28px;height:28px;}
+
+  /* Modals */
+  .modal-content{padding:1.25rem;}
   #modal-body{grid-template-columns:1fr;}
-  .album-art-container{max-width:180px;margin:0 auto;}
+  .album-art-container{max-width:160px;margin:0 auto;}
   .stats-container{grid-template-columns:1fr;}
+
+  /* FIX 5: Auth modal */
+  .auth-modal-content{padding:1.5rem 1.25rem;border-radius:14px;}
+  .auth-modal-content h2{font-size:1.35rem;}
+
+  /* FIX 6: Journal stats — stack to 1 column */
+  .jn-stats-row{
+    grid-template-columns:1fr;
+    padding:1rem;
+    gap:0;
+  }
+  .jn-stat-box{border-right:none;border-bottom:1px solid var(--border);padding:1rem;}
+  .jn-stat-box:last-child{border-bottom:none;border-top:none;}
+  .jn-stat-val{font-size:2rem;}
+  .jn-hero{padding:1.5rem 1rem 1.25rem;}
+  .jn-hero-title{font-size:clamp(1.6rem,6vw,2.2rem);}
+  .jn-main{padding:0 1rem 6rem;}
+  .jn-section-title{font-size:1.6rem;}
+  .jn-entry-grid{grid-template-columns:repeat(2,1fr);gap:.85rem;}
+  .jn-discover-cta{padding:1.5rem 1rem;flex-direction:column;align-items:flex-start;gap:1rem;}
+}
+
+/* ---- FIX 4 extra: Very small phones (380px) ---- */
+@media(max-width:380px){
+  .lp-float-cover:nth-child(1){display:none;}
+  .lp-float-cover:nth-child(4){display:none;}
+  .lp-hero-title{font-size:clamp(2.8rem,12vw,4.5rem);}
+  .ds-album-grid{grid-template-columns:1fr;}
+  .jn-entry-grid{grid-template-columns:1fr;}
 }
